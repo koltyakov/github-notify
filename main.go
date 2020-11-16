@@ -24,7 +24,12 @@ func onReady() {
 	systray.SetTitle("Loading...")
 
 	// https://github.com/settings/tokens
-	accessToken := getAccessToken()
+	accessToken, err := getAccessToken()
+	if err != nil {
+		fmt.Println(err)
+		systray.SetTitle("Error")
+		systray.SetTooltip(fmt.Sprintf("Error: %s", err))
+	}
 
 	notiPage := systray.AddMenuItem("Notifications", "")
 	tokenPage := systray.AddMenuItem("Get Token", "")
