@@ -1,4 +1,4 @@
-# Github Notify
+# GitHub Notify
 
 > Simple tray application for getting GitHub notifications
 
@@ -28,7 +28,7 @@ make build
 ## Config
 
 - Generate [GitHub access token](https://github.com/settings/tokens) (better select only Notifications access).
-- Create `./config/token` file (relative to the start folder) and paste the token.
+- Provive the token in settings form.
 
 ## Run
 

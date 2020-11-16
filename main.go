@@ -23,8 +23,7 @@ func onReady() {
 	systray.SetIcon(icon.Generic)
 	systray.SetTitle("Loading...")
 
-	// https://github.com/settings/tokens
-	accessToken, err := getAccessToken()
+	config, err := getSettings()
 	if err != nil {
 		fmt.Println(err)
 		systray.SetTitle("Error")
@@ -34,6 +33,7 @@ func onReady() {
 	notiPage := systray.AddMenuItem("Notifications", "")
 	tokenPage := systray.AddMenuItem("Get Token", "")
 	tokenPage.Hide()
+	settings := systray.AddMenuItem("Settings", "")
 	systray.AddSeparator()
 	aboutPage := systray.AddMenuItem("About", "About GitHub Notify")
 	mQuit := systray.AddMenuItem("Quit", "Quit GitHub Notify")
@@ -45,6 +45,8 @@ func onReady() {
 				openBrowser("https://github.com/notifications?query=is%3Aunread")
 			case <-tokenPage.ClickedCh:
 				openBrowser("https://github.com/settings/tokens/new")
+			case <-settings.ClickedCh:
+				config = openSettings()
 			case <-aboutPage.ClickedCh:
 				openBrowser("https://github.com/koltyakov/github-notify")
 			case <-mQuit.ClickedCh:
@@ -54,23 +56,24 @@ func onReady() {
 		}
 	}()
 
-	if accessToken == "" {
+	if config.GithubToken == "" {
 		tokenPage.Show()
 		systray.SetTitle("No Token")
 		systray.SetTooltip("Error: no access token has been provided")
 		systray.SetIcon(icon.Error)
 	}
 
-	go func() {
-		for running && accessToken != "" {
-			if num, err := getNotifications(accessToken); err != nil {
+	for running {
+		if config.GithubToken != "" {
+			if num, err := getNotifications(config.GithubToken); err != nil {
 				fmt.Printf("error: %s\n", err)
 				systray.SetTitle("Error")
 				systray.SetTooltip(fmt.Sprintf("Error: %s", err))
 				systray.SetIcon(icon.Error)
 				if strings.Contains(err.Error(), "401 Bad credentials") {
 					tokenPage.Show()
-					running = false
+					config.GithubToken = ""
+					continue
 				}
 			} else {
 				systray.SetTitle(fmt.Sprintf("%d", num))
@@ -81,7 +84,14 @@ func onReady() {
 					systray.SetIcon(icon.Generic)
 				}
 			}
-			time.Sleep(30 * time.Second)
+			d, err := time.ParseDuration(config.UpdateFrequency)
+			if err != nil {
+				fmt.Printf("error parsing update frequency: %s\n", err)
+				d = 30 * time.Second
+			}
+			time.Sleep(d)
+		} else {
+			time.Sleep(1 * time.Second)
 		}
-	}()
+	}
 }
