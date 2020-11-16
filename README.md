@@ -19,6 +19,12 @@
 
 ![demo](./assets/demo.gif)
 
+## Install
+
+```bash
+go get github.com/koltyakov/github-notify
+```
+
 ## Build
 
 ```bash
@@ -30,8 +36,10 @@ make build
 - Generate [GitHub access token](https://github.com/settings/tokens) (better select only Notifications access).
 - Provive the token in settings form.
 
+![settings](./assets/settings.png)
+
 ## Run
 
 ```bash
-./bin/github-notify &
+nohup github-notify >/dev/null 2>&1 &
 ```

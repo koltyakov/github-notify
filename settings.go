@@ -74,7 +74,7 @@ var defaultSettings = settings{
 
 func openSettings() settings {
 	dialogWidth := 520
-	dialogHeight := 370
+	dialogHeight := 375
 
 	var args []string
 
