@@ -12,3 +12,7 @@ build-win:
 
 build:
 	go build -o bin/github-notify ./
+
+run:
+	killall github-notify >/dev/null 2>&1
+	nohup go run ./ >/dev/null 2>&1 &
