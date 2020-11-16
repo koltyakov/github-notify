@@ -14,28 +14,33 @@ if [ ! -e "$GOPATH/bin/2goarray" ]; then
   fi
 fi
 
-IMGPATH="./assets/unix.png"
-OUTPUT=iconunix.go
+generate_icon() {
+  local IMGPATH="$1" # path to image
+  local OUTPUT="$2"  # output .go file name
+  local GONAME="$3"  # go prop name
+  local TARGET="$4"  # unix or win
 
-echo Generating $OUTPUT
-echo "//+build linux darwin" > $OUTPUT
-echo >> $OUTPUT
-cat "$IMGPATH" | $GOPATH/bin/2goarray Data icon >> $OUTPUT
-if [ $? -ne 0 ]; then
-  echo Failure generating $OUTPUT
-  exit
-fi
+  BUILD="//+build linux darwin"
+  if [ $TARGET == "win" ]; then
+    BUILD="//+build windows"
+  fi
 
-IMGPATH="./assets/win.ico"
-OUTPUT=iconwin.go
+  echo Generating $OUTPUT
+  echo "$BUILD" > $OUTPUT
+  echo >> $OUTPUT
+  cat "$IMGPATH" | $GOPATH/bin/2goarray $GONAME icon >> $OUTPUT
+  if [ $? -ne 0 ]; then
+    echo Failure generating $OUTPUT
+  fi
+}
 
-echo Generating $OUTPUT
-echo "//+build windows" > $OUTPUT
-echo >> $OUTPUT
-cat "$IMGPATH" | $GOPATH/bin/2goarray Data icon >> $OUTPUT
-if [ $? -ne 0 ]; then
-  echo Failure generating $OUTPUT
-  exit
-fi
+generate_icon "./assets/icon_unix.png" icon_unix.go Generic unix
+generate_icon "./assets/icon_win.ico" icon_win.go Generic win
+
+generate_icon "./assets/icon_error_unix.png" icon_error_unix.go Error unix
+generate_icon "./assets/icon_error_win.ico" icon_error_win.go Error win
+
+generate_icon "./assets/icon_noti_unix.png" icon_noti_unix.go Noti unix
+generate_icon "./assets/icon_noti_win.ico" icon_noti_win.go Noti win
 
 echo Finished

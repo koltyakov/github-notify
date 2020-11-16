@@ -20,7 +20,7 @@ func main() {
 }
 
 func onReady() {
-	systray.SetIcon(icon.Data)
+	systray.SetIcon(icon.Generic)
 	systray.SetTitle("Loading...")
 
 	// https://github.com/settings/tokens
@@ -58,6 +58,7 @@ func onReady() {
 		tokenPage.Show()
 		systray.SetTitle("No Token")
 		systray.SetTooltip("Error: no access token has been provided")
+		systray.SetIcon(icon.Error)
 	}
 
 	go func() {
@@ -66,6 +67,7 @@ func onReady() {
 				fmt.Printf("error: %s\n", err)
 				systray.SetTitle("Error")
 				systray.SetTooltip(fmt.Sprintf("Error: %s", err))
+				systray.SetIcon(icon.Error)
 				if strings.Contains(err.Error(), "401 Bad credentials") {
 					tokenPage.Show()
 					running = false
@@ -73,6 +75,11 @@ func onReady() {
 			} else {
 				systray.SetTitle(fmt.Sprintf("%d", num))
 				systray.SetTooltip("")
+				if num != 0 {
+					systray.SetIcon(icon.Noti)
+				} else {
+					systray.SetIcon(icon.Generic)
+				}
 			}
 			time.Sleep(30 * time.Second)
 		}
