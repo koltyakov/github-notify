@@ -2,7 +2,10 @@
 
 > Simple tray application (mostly for macOS) for getting GitHub notifications
 
-![demo](./assets/demo.gif)
+| | |
+|-|-|
+| macOS | ![systray_macOS](./assets/systray_macOS.png) |
+| Windows | ![systray_Windows](./assets/systray_Windows.png) |
 
 **Scenario**
 
@@ -11,6 +14,10 @@
 - I prefer a status based humble info rather than agressive email or pop-ups
 - My daily driver is macOS machine
 - I prefer default Safari for browsing
+
+## Demo
+
+![demo](./assets/demo.gif)
 
 ## Build
 
