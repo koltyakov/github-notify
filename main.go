@@ -1,15 +1,11 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"io/ioutil"
 	"strings"
 	"time"
 
 	"github.com/getlantern/systray"
-	"github.com/google/go-github/v32/github"
-	"golang.org/x/oauth2"
 
 	"github.com/koltyakov/github-notify/icon"
 )
@@ -27,21 +23,34 @@ func onReady() {
 	systray.SetIcon(icon.Data)
 	systray.SetTitle("Loading...")
 
-	mQuit := systray.AddMenuItem("Quit", "")
+	// https://github.com/settings/tokens
+	accessToken := getAccessToken()
+
+	notiPage := systray.AddMenuItem("Notifications", "")
+	tokenPage := systray.AddMenuItem("Get Token", "")
+	tokenPage.Hide()
+	systray.AddSeparator()
+	aboutPage := systray.AddMenuItem("About", "About GitHub Notify")
+	mQuit := systray.AddMenuItem("Quit", "Quit GitHub Notify")
+
 	go func() {
-		<-mQuit.ClickedCh
-		systray.Quit()
+		for {
+			select {
+			case <-notiPage.ClickedCh:
+				openBrowser("https://github.com/notifications?query=is%3Aunread")
+			case <-tokenPage.ClickedCh:
+				openBrowser("https://github.com/settings/tokens/new")
+			case <-aboutPage.ClickedCh:
+				openBrowser("https://github.com/koltyakov/github-notify")
+			case <-mQuit.ClickedCh:
+				systray.Quit()
+				return
+			}
+		}
 	}()
 
-	// https://github.com/settings/tokens
-	dat, err := ioutil.ReadFile("./config/token")
-	if err != nil {
-		fmt.Println(err)
-		systray.Quit()
-	}
-	accessToken := string(dat)
-
 	if accessToken == "" {
+		tokenPage.Show()
 		systray.SetTitle("No Token")
 		systray.SetTooltip("Error: no access token has been provided")
 	}
@@ -53,6 +62,7 @@ func onReady() {
 				systray.SetTitle("Error")
 				systray.SetTooltip(fmt.Sprintf("Error: %s", err))
 				if strings.Contains(err.Error(), "401 Bad credentials") {
+					tokenPage.Show()
 					running = false
 				}
 			} else {
@@ -62,23 +72,4 @@ func onReady() {
 			time.Sleep(30 * time.Second)
 		}
 	}()
-}
-
-func getNotifications(accessToken string) (int, error) {
-	ctx := context.Background()
-
-	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{
-			AccessToken: accessToken,
-		},
-	)
-	tc := oauth2.NewClient(ctx, ts)
-	client := github.NewClient(tc)
-
-	noti, _, err := client.Activity.ListNotifications(ctx, nil)
-	if err != nil {
-		return -1, err
-	}
-
-	return len(noti), nil
 }
