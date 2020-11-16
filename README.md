@@ -1,6 +1,6 @@
 # Github Notify
 
-> Simple tray application (mostly for macOS) for getting GitHub notifications
+> Simple tray application for getting GitHub notifications
 
 | | |
 |-|-|
