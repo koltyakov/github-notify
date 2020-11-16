@@ -46,20 +46,22 @@ func onReady() {
 		systray.SetTooltip("Error: no access token has been provided")
 	}
 
-	for running && accessToken != "" {
-		if num, err := getNotifications(accessToken); err != nil {
-			fmt.Printf("error: %s\n", err)
-			systray.SetTitle("Error")
-			systray.SetTooltip(fmt.Sprintf("Error: %s", err))
-			if strings.Contains(err.Error(), "401 Bad credentials") {
-				running = false
+	go func() {
+		for running && accessToken != "" {
+			if num, err := getNotifications(accessToken); err != nil {
+				fmt.Printf("error: %s\n", err)
+				systray.SetTitle("Error")
+				systray.SetTooltip(fmt.Sprintf("Error: %s", err))
+				if strings.Contains(err.Error(), "401 Bad credentials") {
+					running = false
+				}
+			} else {
+				systray.SetTitle(fmt.Sprintf("%d", num))
+				systray.SetTooltip("")
 			}
-		} else {
-			systray.SetTitle(fmt.Sprintf("%d", num))
-			systray.SetTooltip("")
+			time.Sleep(30 * time.Second)
 		}
-		time.Sleep(30 * time.Second)
-	}
+	}()
 }
 
 func getNotifications(accessToken string) (int, error) {
