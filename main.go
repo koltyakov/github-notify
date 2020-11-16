@@ -47,6 +47,17 @@ func onReady() {
 				openBrowser("https://github.com/settings/tokens/new")
 			case <-settings.ClickedCh:
 				config = openSettings()
+				if config.GithubToken == "" {
+					tokenPage.Show()
+					systray.SetTitle("No Token")
+					systray.SetTooltip("Error: no access token has been provided")
+					systray.SetIcon(icon.Error)
+				} else {
+					tokenPage.Hide()
+					systray.SetTitle("")
+					systray.SetTooltip("")
+					systray.SetIcon(icon.Generic)
+				}
 			case <-aboutPage.ClickedCh:
 				openBrowser("https://github.com/koltyakov/github-notify")
 			case <-mQuit.ClickedCh:
