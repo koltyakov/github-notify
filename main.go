@@ -55,7 +55,7 @@ func onReady() {
 					if cnfg.GithubToken == "" {
 						onEmptyToken(menu)
 					}
-					// check updates immidiately after settings change
+					// check updates immediately after settings change
 					_ = run(&cnfg, menu, 0)
 				}
 			case <-menu["about"].ClickedCh:
