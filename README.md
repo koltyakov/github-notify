@@ -44,6 +44,12 @@ go get github.com/koltyakov/github-notify
 nohup github-notify >/dev/null 2>&1 &
 ```
 
+or, in a sources folder,
+
+```bash
+make start
+```
+
 ### Windows
 
 Run `github-notify.exe`.
