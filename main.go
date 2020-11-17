@@ -13,7 +13,6 @@ import (
 
 var appname = "github-notify"
 var running = true
-var notiCnt = -1
 
 // Init systray applications
 func main() {
@@ -133,28 +132,25 @@ func onEmptyToken(menu map[string]*systray.MenuItem) {
 
 // onNotification system tray menu on notifications change event handler
 func onNotification(notifications []*github.Notification) {
-	num := len(notifications)
-	if notiCnt != num {
-		systray.SetTitle(fmt.Sprintf("%d", num))
-		if num == 0 {
-			systray.SetIcon(icon.Base)
-			return
-		}
-		systray.SetIcon(icon.Noti)
+	tooltip := ""
+	reposEvents := map[string]int{}
+	for _, n := range notifications {
+		reposEvents[*n.Repository.FullName] = reposEvents[*n.Repository.FullName] + 1
+	}
+	for repo, cnt := range reposEvents {
+		tooltip = fmt.Sprintf("%s%s (%d)\n", tooltip, repo, cnt)
 	}
 
-	systray.SetTooltip("")
-	if num > 0 {
-		tooltip := ""
-		reposEvents := map[string]int{}
-		for _, n := range notifications {
-			reposEvents[*n.Repository.FullName] = reposEvents[*n.Repository.FullName] + 1
-		}
-		for repo, cnt := range reposEvents {
-			tooltip = fmt.Sprintf("%s%s (%d)\n", tooltip, repo, cnt)
-		}
-		systray.SetTooltip(strings.Trim(tooltip, "\n"))
+	if len(reposEvents) > 1 {
+		systray.SetTitle(fmt.Sprintf("%d/%d", len(notifications), len(reposEvents)))
+	} else {
+		systray.SetTitle(fmt.Sprintf("%d", len(notifications)))
 	}
 
-	notiCnt = num
+	if len(notifications) == 0 {
+		systray.SetIcon(icon.Base)
+		return
+	}
+	systray.SetIcon(icon.Noti)
+	systray.SetTooltip(strings.Trim(tooltip, "\n"))
 }

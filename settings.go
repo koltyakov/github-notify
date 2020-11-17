@@ -29,8 +29,8 @@ func openSettings() (settings, bool) {
 		w int
 		h int
 	}{
-		w: 520,
-		h: 375,
+		w: 540,
+		h: 380,
 	}
 
 	// Chrome Launch Switches arguments https://sites.google.com/site/chromeappupdates/launch-switches
