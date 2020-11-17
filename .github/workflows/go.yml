@@ -30,7 +30,8 @@ jobs:
     - name: Build
       run: |
         make build-linux
-        make build-windows
+        make build-win
+        make build-darwin
 
 #     - name: Test
 #       run: go test -v .
