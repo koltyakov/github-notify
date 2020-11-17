@@ -48,7 +48,7 @@ func openSettings() (settings, bool) {
 		log.Fatal(err)
 	}
 
-	ui.Bind("saveSettings", func(settingsJSON string) {
+	if err := ui.Bind("saveSettings", func(settingsJSON string) {
 		var cnfg settings
 		if err := json.Unmarshal([]byte(settingsJSON), &cnfg); err != nil {
 			fmt.Printf("unable to parse the response: %v\n", err)
@@ -60,7 +60,9 @@ func openSettings() (settings, bool) {
 			}
 		}
 		_ = ui.Close()
-	})
+	}); err != nil {
+		fmt.Printf("error binding handler: %s\n", err)
+	}
 
 	cnfg, err := getSettings()
 	if err != nil {
@@ -73,7 +75,7 @@ func openSettings() (settings, bool) {
 	`)
 
 	// Wait for settings page close
-	defer ui.Close()
+	defer func() { _ = ui.Close() }()
 	<-ui.Done()
 
 	// Return new settings

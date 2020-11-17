@@ -45,9 +45,13 @@ func onReady() {
 		for {
 			select {
 			case <-menu["notifications"].ClickedCh:
-				openBrowser("https://github.com/notifications?query=is%3Aunread")
+				if err := openBrowser("https://github.com/notifications?query=is%3Aunread"); err != nil {
+					fmt.Printf("error opening browser: %s\n", err)
+				}
 			case <-menu["getToken"].ClickedCh:
-				openBrowser("https://github.com/settings/tokens/new")
+				if err := openBrowser("https://github.com/settings/tokens/new"); err != nil {
+					fmt.Printf("error opening browser: %s\n", err)
+				}
 			case <-menu["settings"].ClickedCh:
 				if newCnfg, upd := openSettings(); upd {
 					cnfg = newCnfg
@@ -59,7 +63,9 @@ func onReady() {
 					_ = run(&cnfg, menu, 0)
 				}
 			case <-menu["about"].ClickedCh:
-				openBrowser("https://github.com/koltyakov/github-notify")
+				if err := openBrowser("https://github.com/koltyakov/github-notify"); err != nil {
+					fmt.Printf("error opening browser: %s\n", err)
+				}
 			case <-menu["quit"].ClickedCh:
 				systray.Quit()
 				return

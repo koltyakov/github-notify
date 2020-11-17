@@ -4,8 +4,9 @@ install:
 format:
 	gofmt -s -w .
 
-icons:
+generate:
 	cd icon/ && ./gen.sh
+	make format
 
 build-win:
 	GOOS=windows GOARCH=amd64 go build -v -ldflags "-H=windowsgui" -o bin/win/github-notify.exe ./
@@ -38,7 +39,8 @@ bundle-darwin: clean build-darwin
 	rm 'bin/darwin/GitHub Notify.app/Contents/README'
 	# Package solution to .dmg image
 	cd bin/darwin/ && \
-		create-dmg --dmg-title='GitHub Notify' 'GitHub Notify.app' ./
+		create-dmg --dmg-title='GitHub Notify' 'GitHub Notify.app' ./ \
+			|| true # ignore Error 2
 
 start: run # alias for run
 run:

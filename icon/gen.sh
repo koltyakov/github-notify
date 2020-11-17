@@ -27,6 +27,7 @@ generate_icon() {
 
   echo Generating $OUTPUT
   echo "$BUILD" > $OUTPUT
+  echo "//goland:noinspection ALL" >> $OUTPUT
   echo >> $OUTPUT
   cat "$IMGPATH" | $GOPATH/bin/2goarray $GONAME icon >> $OUTPUT
   if [ $? -ne 0 ]; then

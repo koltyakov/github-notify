@@ -2,17 +2,13 @@ name: Release
 
 on:
   push:
-    branches: [ master ]
-
-# on:
-#   push:
-#     tags:
-#       - 'v*.*.*'
+    tags:
+      - 'v*.*.*'
 
 jobs:
 
   build-darwin:
-    name: Build (macOS)
+    name: Bundle (macOS)
     runs-on: macos-latest
     steps:
 
