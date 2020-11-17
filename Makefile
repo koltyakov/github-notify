@@ -23,6 +23,19 @@ build: clean
 clean:
 	rm -rf bin/
 
+bundle-darwin: clean build-darwin
+	go get github.com/machinebox/appify
+	cd bin/darwin/ && \
+		appify \
+			-author "Andrew Koltyakov" \
+			-id com.koltyakov.ghnotify \
+			-version 1.0 \
+			-name "GitHub Notify" \
+			-icon ../../assets/icon.png \
+			./github-notify
+	/usr/libexec/PlistBuddy -c 'Add :LSUIElement bool true' 'bin/darwin/GitHub Notify.app/Contents/Info.plist'
+	rm 'bin/darwin/GitHub Notify.app/Contents/README'
+
 run:
 	pkill github-notify || true
 	nohup go run ./ >/dev/null 2>&1 &

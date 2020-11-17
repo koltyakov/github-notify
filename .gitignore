@@ -1,5 +1,7 @@
 token
 bin/
+pkg/
+dist/
 
 # Binaries for programs and plugins
 *.exe
