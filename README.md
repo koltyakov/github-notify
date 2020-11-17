@@ -44,17 +44,17 @@ go get github.com/koltyakov/github-notify
 nohup github-notify >/dev/null 2>&1 &
 ```
 
-## macOS bundle as .app
+### Windows
+
+Run `github-notify.exe`.
+
+## App bundle, macOS
 
 ```bash
 make bundle-darwin
 ```
 
 As a result, the `GitHub Notify.app` should be found in `./bin/darwin`
-
-### Windows
-
-Run `github-notify.exe`.
 
 ## Build
 
