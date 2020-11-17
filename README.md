@@ -2,6 +2,10 @@
 
 > Simple tray application for getting GitHub notifications
 
+![Build Status](https://github.com/koltyakov/github-notify/workflows/Go/badge.svg?branch=master)
+[![Go Report Card](https://goreportcard.com/badge/github.com/koltyakov/github-notify)](https://goreportcard.com/report/github.com/koltyakov/github-notify)
+[![License](https://img.shields.io/github/license/koltyakov/github-notify.svg)](https://github.com/koltyakov/github-notify/blob/master/LICENSE)
+
 | | |
 |-|-|
 | macOS | ![systray_macOS](./assets/systray_macOS.png) |

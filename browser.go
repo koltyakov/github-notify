@@ -8,16 +8,14 @@ import (
 
 // openBrowser opens a page in default browser
 func openBrowser(url string) error {
-	var err error = nil
 	switch runtime.GOOS {
 	case "linux":
-		err = exec.Command("xdg-open", url).Start()
+		return exec.Command("xdg-open", url).Start()
 	case "windows":
-		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
 	case "darwin":
-		err = exec.Command("open", url).Start()
+		return exec.Command("open", url).Start()
 	default:
-		err = fmt.Errorf("unsupported platform")
+		return fmt.Errorf("unsupported platform")
 	}
-	return err
 }

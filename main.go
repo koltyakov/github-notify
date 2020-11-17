@@ -23,7 +23,7 @@ func main() {
 func onReady() {
 	menu := map[string]*systray.MenuItem{}
 
-	systray.SetIcon(icon.Generic)
+	systray.SetIcon(icon.Base)
 	systray.SetTitle("Loading...")
 
 	cnfg, err := getSettings()
@@ -105,14 +105,14 @@ func onError(err error) {
 	fmt.Printf("error: %s", err)
 	systray.SetTitle("Error")
 	systray.SetTooltip(fmt.Sprintf("Error: %s", err))
-	systray.SetIcon(icon.Error)
+	systray.SetIcon(icon.Err)
 }
 
 func onEmptyToken(menu map[string]*systray.MenuItem) {
 	menu["getToken"].Show()
 	systray.SetTitle("No Token")
 	systray.SetTooltip("Error: no access token has been provided")
-	systray.SetIcon(icon.Error)
+	systray.SetIcon(icon.Err)
 }
 
 func onNotification(num int) {
@@ -120,7 +120,7 @@ func onNotification(num int) {
 		systray.SetTitle(fmt.Sprintf("%d", num))
 		systray.SetTooltip("")
 		if num == 0 {
-			systray.SetIcon(icon.Generic)
+			systray.SetIcon(icon.Base)
 			return
 		}
 		systray.SetIcon(icon.Noti)
