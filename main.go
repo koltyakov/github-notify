@@ -11,98 +11,116 @@ import (
 )
 
 var running = true
+var notiCnt = -1
 
+// Init systray applications
 func main() {
-	onExit := func() {
-		running = false
-	}
+	onExit := func() { running = false }
 	systray.Run(onReady, onExit)
 }
 
 func onReady() {
+	menu := map[string]*systray.MenuItem{}
+
 	systray.SetIcon(icon.Generic)
 	systray.SetTitle("Loading...")
 
-	config, err := getSettings()
+	cnfg, err := getSettings()
 	if err != nil {
-		fmt.Println(err)
-		systray.SetTitle("Error")
-		systray.SetTooltip(fmt.Sprintf("Error: %s", err))
+		onError(err)
 	}
 
-	notiPage := systray.AddMenuItem("Notifications", "")
-	tokenPage := systray.AddMenuItem("Get Token", "")
-	tokenPage.Hide()
-	settings := systray.AddMenuItem("Settings", "")
+	// Menu items
+	menu["notifications"] = systray.AddMenuItem("Notifications", "")
+	menu["getToken"] = systray.AddMenuItem("Get Token", "")
+	menu["settings"] = systray.AddMenuItem("Settings", "")
 	systray.AddSeparator()
-	aboutPage := systray.AddMenuItem("About", "About GitHub Notify")
-	mQuit := systray.AddMenuItem("Quit", "Quit GitHub Notify")
+	menu["about"] = systray.AddMenuItem("About", "About GitHub Notify")
+	menu["quit"] = systray.AddMenuItem("Quit", "Quit GitHub Notify")
+	// Menu items
 
+	// Menu actions
 	go func() {
 		for {
 			select {
-			case <-notiPage.ClickedCh:
+			case <-menu["notifications"].ClickedCh:
 				openBrowser("https://github.com/notifications?query=is%3Aunread")
-			case <-tokenPage.ClickedCh:
+			case <-menu["getToken"].ClickedCh:
 				openBrowser("https://github.com/settings/tokens/new")
-			case <-settings.ClickedCh:
-				config = openSettings()
-				if config.GithubToken == "" {
-					tokenPage.Show()
-					systray.SetTitle("No Token")
-					systray.SetTooltip("Error: no access token has been provided")
-					systray.SetIcon(icon.Error)
-				} else {
-					tokenPage.Hide()
-					systray.SetTitle("")
-					systray.SetTooltip("")
-					systray.SetIcon(icon.Generic)
+			case <-menu["settings"].ClickedCh:
+				cnfg = openSettings()
+				menu["getToken"].Hide()
+				if cnfg.GithubToken == "" {
+					onEmptyToken(menu)
 				}
-			case <-aboutPage.ClickedCh:
+			case <-menu["about"].ClickedCh:
 				openBrowser("https://github.com/koltyakov/github-notify")
-			case <-mQuit.ClickedCh:
+			case <-menu["quit"].ClickedCh:
 				systray.Quit()
 				return
 			}
 		}
 	}()
 
-	if config.GithubToken == "" {
-		tokenPage.Show()
-		systray.SetTitle("No Token")
-		systray.SetTooltip("Error: no access token has been provided")
-		systray.SetIcon(icon.Error)
+	// Show get token item only when no token is provided
+	menu["getToken"].Hide()
+	if cnfg.GithubToken == "" {
+		onEmptyToken(menu)
 	}
 
 	for running {
-		if config.GithubToken != "" {
-			if num, err := getNotifications(config.GithubToken); err != nil {
-				fmt.Printf("error: %s\n", err)
-				systray.SetTitle("Error")
-				systray.SetTooltip(fmt.Sprintf("Error: %s", err))
-				systray.SetIcon(icon.Error)
-				if strings.Contains(err.Error(), "401 Bad credentials") {
-					tokenPage.Show()
-					config.GithubToken = ""
+		timeout := 1 * time.Second
+
+		// Get notification only when having access token
+		if cnfg.GithubToken != "" {
+			// Request GitHub API
+			num, err := getNotifications(cnfg.GithubToken)
+			if err != nil {
+				if onError(err); strings.Contains(err.Error(), "401 Bad credentials") {
+					menu["getToken"].Show()
+					cnfg.GithubToken = ""
 					continue
 				}
 			} else {
-				systray.SetTitle(fmt.Sprintf("%d", num))
-				systray.SetTooltip("")
-				if num != 0 {
-					systray.SetIcon(icon.Noti)
-				} else {
-					systray.SetIcon(icon.Generic)
-				}
+				onNotification(num)
 			}
-			d, err := time.ParseDuration(config.UpdateFrequency)
+
+			// Timeout duration from settings
+			d, err := time.ParseDuration(cnfg.UpdateFrequency)
 			if err != nil {
 				fmt.Printf("error parsing update frequency: %s\n", err)
 				d = 30 * time.Second
 			}
-			time.Sleep(d)
-		} else {
-			time.Sleep(1 * time.Second)
+			timeout = d
 		}
+
+		<-time.After(timeout)
 	}
+}
+
+func onError(err error) {
+	fmt.Printf("error: %s", err)
+	systray.SetTitle("Error")
+	systray.SetTooltip(fmt.Sprintf("Error: %s", err))
+	systray.SetIcon(icon.Error)
+}
+
+func onEmptyToken(menu map[string]*systray.MenuItem) {
+	menu["getToken"].Show()
+	systray.SetTitle("No Token")
+	systray.SetTooltip("Error: no access token has been provided")
+	systray.SetIcon(icon.Error)
+}
+
+func onNotification(num int) {
+	if notiCnt != num {
+		systray.SetTitle(fmt.Sprintf("%d", num))
+		systray.SetTooltip("")
+		if num == 0 {
+			systray.SetIcon(icon.Generic)
+			return
+		}
+		systray.SetIcon(icon.Noti)
+	}
+	notiCnt = num
 }
