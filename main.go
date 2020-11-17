@@ -81,7 +81,7 @@ func onReady() {
 	}
 }
 
-// run executes nitification checks logic
+// run executes notification checks logic
 func run(cnfg *settings, menu map[string]*systray.MenuItem, timeout time.Duration) time.Duration {
 	// Get notification only when having access token
 	if cnfg.GithubToken != "" {
