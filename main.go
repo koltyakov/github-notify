@@ -55,6 +55,8 @@ func onReady() {
 					if cnfg.GithubToken == "" {
 						onEmptyToken(menu)
 					}
+					// check updates immidiately after settings change
+					_ = run(&cnfg, menu, 0)
 				}
 			case <-menu["about"].ClickedCh:
 				openBrowser("https://github.com/koltyakov/github-notify")
@@ -71,36 +73,42 @@ func onReady() {
 		onEmptyToken(menu)
 	}
 
+	// Infinite service loop
 	for running {
-		timeout := 1 * time.Second
-
-		// Get notification only when having access token
-		if cnfg.GithubToken != "" {
-			// Request GitHub API
-			num, err := getNotifications(cnfg.GithubToken)
-			if err != nil {
-				if onError(err); strings.Contains(err.Error(), "401 Bad credentials") {
-					menu["getToken"].Show()
-					cnfg.GithubToken = ""
-					continue
-				}
-			} else {
-				onNotification(num)
-			}
-
-			// Timeout duration from settings
-			d, err := time.ParseDuration(cnfg.UpdateFrequency)
-			if err != nil {
-				fmt.Printf("error parsing update frequency: %s\n", err)
-				d = 30 * time.Second
-			}
-			timeout = d
-		}
-
-		<-time.After(timeout)
+		<-time.After(
+			run(&cnfg, menu, 1*time.Second),
+		)
 	}
 }
 
+// run executes nitification checks logic
+func run(cnfg *settings, menu map[string]*systray.MenuItem, timeout time.Duration) time.Duration {
+	// Get notification only when having access token
+	if cnfg.GithubToken != "" {
+		// Request GitHub API
+		num, err := getNotifications(cnfg.GithubToken)
+		if err != nil {
+			if onError(err); strings.Contains(err.Error(), "401 Bad credentials") {
+				menu["getToken"].Show()
+				cnfg.GithubToken = ""
+				return 0 // continue
+			}
+		} else {
+			onNotification(num)
+		}
+
+		// Timeout duration from settings
+		d, err := time.ParseDuration(cnfg.UpdateFrequency)
+		if err != nil {
+			fmt.Printf("error parsing update frequency: %s\n", err)
+			d = 30 * time.Second
+		}
+		timeout = d
+	}
+	return timeout
+}
+
+// onError system tray menu on error event handler
 func onError(err error) {
 	fmt.Printf("error: %s", err)
 	systray.SetTitle("Error")
@@ -108,6 +116,7 @@ func onError(err error) {
 	systray.SetIcon(icon.Err)
 }
 
+// onEmptyToken system tray menu on empty token event handler
 func onEmptyToken(menu map[string]*systray.MenuItem) {
 	menu["getToken"].Show()
 	systray.SetTitle("No Token")
@@ -115,6 +124,7 @@ func onEmptyToken(menu map[string]*systray.MenuItem) {
 	systray.SetIcon(icon.Err)
 }
 
+// onNotification system tray menu on notifications change event handler
 func onNotification(num int) {
 	if notiCnt != num {
 		systray.SetTitle(fmt.Sprintf("%d", num))
