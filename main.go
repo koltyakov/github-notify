@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/getlantern/systray"
+	"github.com/google/go-github/v32/github"
 
 	"github.com/koltyakov/github-notify/icon"
 )
@@ -92,7 +93,7 @@ func run(cnfg *settings, menu map[string]*systray.MenuItem, timeout time.Duratio
 	// Get notification only when having access token
 	if cnfg.GithubToken != "" {
 		// Request GitHub API
-		num, err := getNotifications(cnfg.GithubToken)
+		notifications, err := getNotifications(cnfg.GithubToken)
 		if err != nil {
 			if onError(err); strings.Contains(err.Error(), "401 Bad credentials") {
 				menu["getToken"].Show()
@@ -100,7 +101,7 @@ func run(cnfg *settings, menu map[string]*systray.MenuItem, timeout time.Duratio
 				return 0 // continue
 			}
 		} else {
-			onNotification(num)
+			onNotification(notifications)
 		}
 
 		// Timeout duration from settings
@@ -131,15 +132,29 @@ func onEmptyToken(menu map[string]*systray.MenuItem) {
 }
 
 // onNotification system tray menu on notifications change event handler
-func onNotification(num int) {
+func onNotification(notifications []*github.Notification) {
+	num := len(notifications)
 	if notiCnt != num {
 		systray.SetTitle(fmt.Sprintf("%d", num))
-		systray.SetTooltip("")
 		if num == 0 {
 			systray.SetIcon(icon.Base)
 			return
 		}
 		systray.SetIcon(icon.Noti)
 	}
+
+	systray.SetTooltip("")
+	if num > 0 {
+		tooltip := ""
+		reposEvents := map[string]int{}
+		for _, n := range notifications {
+			reposEvents[*n.Repository.FullName] = reposEvents[*n.Repository.FullName] + 1
+		}
+		for repo, cnt := range reposEvents {
+			tooltip = fmt.Sprintf("%s%s (%d)\n", tooltip, repo, cnt)
+		}
+		systray.SetTooltip(strings.Trim(tooltip, "\n"))
+	}
+
 	notiCnt = num
 }

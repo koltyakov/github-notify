@@ -7,8 +7,8 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// getNotifications checks personal unread GitHub notifications and returns the count
-func getNotifications(accessToken string) (int, error) {
+// getNotifications checks personal unread GitHub notifications
+func getNotifications(accessToken string) ([]*github.Notification, error) {
 	ctx := context.Background()
 
 	client := github.NewClient(
@@ -19,10 +19,10 @@ func getNotifications(accessToken string) (int, error) {
 		)),
 	)
 
-	noti, _, err := client.Activity.ListNotifications(ctx, nil)
+	notifications, _, err := client.Activity.ListNotifications(ctx, nil)
 	if err != nil {
-		return -1, err
+		return nil, err
 	}
 
-	return len(noti), nil
+	return notifications, nil
 }
