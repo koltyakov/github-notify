@@ -149,8 +149,9 @@ func onNotification(notifications []*github.Notification) {
 
 	if len(notifications) == 0 {
 		systray.SetIcon(icon.Base)
-		return
+		systray.SetTooltip("No unread notifications")
+	} else {
+		systray.SetIcon(icon.Noti)
+		systray.SetTooltip(strings.Trim(tooltip, "\n"))
 	}
-	systray.SetIcon(icon.Noti)
-	systray.SetTooltip(strings.Trim(tooltip, "\n"))
 }
