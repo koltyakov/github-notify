@@ -31,7 +31,6 @@ jobs:
       run: |
         make build-linux
         make build-win
-        make build-darwin
 
-#     - name: Test
-#       run: go test -v .
+    # - name: Test
+    #   run: go test -v .
