@@ -37,7 +37,6 @@ bundle-darwin: clean build-darwin
 	/usr/libexec/PlistBuddy -c 'Add :LSUIElement bool true' 'bin/darwin/GitHub Notify.app/Contents/Info.plist'
 	rm 'bin/darwin/GitHub Notify.app/Contents/README'
 	# Package solution to .dmg image
-	# npm i -g create-dmg
 	cd bin/darwin/ && \
 		create-dmg --dmg-title='GitHub Notify' 'GitHub Notify.app' ./
 
