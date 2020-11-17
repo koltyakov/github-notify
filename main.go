@@ -10,6 +10,7 @@ import (
 	"github.com/koltyakov/github-notify/icon"
 )
 
+var appname = "github-notify"
 var running = true
 var notiCnt = -1
 
@@ -48,10 +49,12 @@ func onReady() {
 			case <-menu["getToken"].ClickedCh:
 				openBrowser("https://github.com/settings/tokens/new")
 			case <-menu["settings"].ClickedCh:
-				cnfg = openSettings()
-				menu["getToken"].Hide()
-				if cnfg.GithubToken == "" {
-					onEmptyToken(menu)
+				if newCnfg, upd := openSettings(); upd {
+					cnfg = newCnfg
+					menu["getToken"].Hide()
+					if cnfg.GithubToken == "" {
+						onEmptyToken(menu)
+					}
 				}
 			case <-menu["about"].ClickedCh:
 				openBrowser("https://github.com/koltyakov/github-notify")

@@ -6,6 +6,7 @@ import (
 	"runtime"
 )
 
+// openBrowser opens a page in default browser
 func openBrowser(url string) error {
 	var err error = nil
 	switch runtime.GOOS {
