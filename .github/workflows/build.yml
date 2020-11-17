@@ -49,7 +49,7 @@ jobs:
     - name: Build
       run: make build-linux
 
-  build-linux:
+  build-win:
     name: Build (Windows)
     runs-on: windows-latest
     steps:
