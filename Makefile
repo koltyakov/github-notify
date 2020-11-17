@@ -10,8 +10,10 @@ icons:
 build-win:
 	GOOS=windows GOARCH=amd64 go build -ldflags "-H=windowsgui" -o bin/github-notify.exe ./
 
-build:
-	go build -o bin/github-notify ./
+build-darwin:
+	GOOS=darwin GOARCH=amd64 go build -o bin/github-notify ./
+
+build: build-win build-darwin
 
 run:
 	pkill github-notify || true

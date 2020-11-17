@@ -25,12 +25,6 @@
 go get github.com/koltyakov/github-notify
 ```
 
-## Build
-
-```bash
-make build
-```
-
 ## Config
 
 - Generate [GitHub access token](https://github.com/settings/tokens) (better select only Notifications access).
@@ -40,6 +34,26 @@ make build
 
 ## Run
 
+### macOS/Linux
+
 ```bash
 nohup github-notify >/dev/null 2>&1 &
+```
+
+### Windows
+
+Run `github-notify.exe`.
+
+## Build
+
+### Prerequisites
+
+The project uses these major dependencies and inherits their prerequisites:
+- [systray](https://github.com/getlantern/systray)
+- [Lorca](https://github.com/zserge/lorca)
+
+### Build command
+
+```bash
+make build
 ```
