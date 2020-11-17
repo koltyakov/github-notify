@@ -25,7 +25,9 @@ jobs:
       run: go get -v -t -d ./...
 
     - name: Build
-      run: make build
+      run: |
+        make build-linux
+        make build-windows
 
 #     - name: Test
 #       run: go test -v .

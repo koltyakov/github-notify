@@ -8,12 +8,20 @@ icons:
 	cd icon/ && ./gen.sh
 
 build-win:
-	GOOS=windows GOARCH=amd64 go build -ldflags "-H=windowsgui" -o bin/github-notify.exe ./
+	GOOS=windows GOARCH=amd64 go build -v -ldflags "-H=windowsgui" -o bin/win/github-notify.exe ./
 
 build-darwin:
-	GOOS=darwin GOARCH=amd64 go build -o bin/github-notify ./
+	GOOS=darwin GOARCH=amd64 go build -v -o bin/darwin/github-notify ./
 
-build: build-win build-darwin
+build-linux:
+	GOOS=linux GOARCH=amd64 go build -v -o bin/linux/github-notify ./
+
+# build: clean build-win build-darwin build-linux
+build: clean
+	go build -v -o bin/github-notify ./
+
+clean:
+	rm -rf bin/
 
 run:
 	pkill github-notify || true
