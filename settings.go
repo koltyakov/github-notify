@@ -27,7 +27,7 @@ func openSettings() (settings, bool, error) {
 	if err != nil {
 		// Check only an error with no Chrome found
 		if strings.Index(err.Error(), "fork/exec : no such file or directory") != -1 {
-			// Workaround opening settigns file for manual edit
+			// Workaround opening settings file for manual edit
 			err = openInEditor()
 		}
 	}

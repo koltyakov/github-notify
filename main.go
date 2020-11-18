@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -13,17 +12,17 @@ import (
 )
 
 var appname = "github-notify"
-var running = true
 
 var cnfg = &settings{}
 var menu = map[string]*systray.MenuItem{}
 
 // Init systray applications
 func main() {
-	onExit := func() { running = false }
+	onExit := func() {}
 	systray.Run(onReady, onExit)
 }
 
+// onReady bootstraps system tray menu logic
 func onReady() {
 	setIcon(icon.Base)
 	setTitle("Loading...")
@@ -41,44 +40,9 @@ func onReady() {
 	systray.AddSeparator()
 	menu["about"] = systray.AddMenuItem("About", "About GitHub Notify")
 	menu["quit"] = systray.AddMenuItem("Quit", "Quit GitHub Notify")
-	// Menu items
 
 	// Menu actions
-	go func() {
-		for {
-			select {
-			case <-menu["notifications"].ClickedCh:
-				if err := openBrowser("https://github.com/notifications?query=is%3Aunread"); err != nil {
-					fmt.Printf("error opening browser: %s\n", err)
-				}
-			case <-menu["getToken"].ClickedCh:
-				if err := openBrowser("https://github.com/settings/tokens/new"); err != nil {
-					fmt.Printf("error opening browser: %s\n", err)
-				}
-			case <-menu["settings"].ClickedCh:
-				newCnfg, upd, err := openSettings()
-				if err != nil {
-					onError(err)
-				}
-				if upd && err == nil {
-					cnfg = &newCnfg
-					menu["getToken"].Hide()
-					if cnfg.GithubToken == "" {
-						onEmptyToken()
-					}
-					// check updates immediately after settings change
-					go func() { _ = run(0) }()
-				}
-			case <-menu["about"].ClickedCh:
-				if err := openBrowser("https://github.com/koltyakov/github-notify"); err != nil {
-					fmt.Printf("error opening browser: %s\n", err)
-				}
-			case <-menu["quit"].ClickedCh:
-				systray.Quit()
-				return
-			}
-		}
-	}()
+	go menuActions()
 
 	// Show get token item only when no token is provided
 	menu["getToken"].Hide()
@@ -87,17 +51,46 @@ func onReady() {
 	}
 
 	// Infinite service loop
-	for running {
-		timeout := time.Duration(1 * time.Second)
-		var wg sync.WaitGroup
-		wg.Add(1)
-		// Run in separate goroutine
-		go func() {
-			defer wg.Done()
-			timeout = run(timeout)
-		}()
-		wg.Wait()
-		<-time.After(timeout)
+	for {
+		<-time.After(run(1 * time.Second))
+	}
+}
+
+// menuActions watch to menu actions channels
+// must be started in a goroutine, otherwise blocks the loop
+func menuActions() {
+	for {
+		select {
+		case <-menu["notifications"].ClickedCh:
+			if err := openBrowser("https://github.com/notifications?query=is%3Aunread"); err != nil {
+				fmt.Printf("error opening browser: %s\n", err)
+			}
+		case <-menu["getToken"].ClickedCh:
+			if err := openBrowser("https://github.com/settings/tokens/new"); err != nil {
+				fmt.Printf("error opening browser: %s\n", err)
+			}
+		case <-menu["settings"].ClickedCh:
+			newCnfg, upd, err := openSettings()
+			if err != nil {
+				onError(err)
+			}
+			if upd && err == nil {
+				cnfg = &newCnfg
+				menu["getToken"].Hide()
+				if cnfg.GithubToken == "" {
+					onEmptyToken()
+				}
+				// check updates immediately after settings change
+				go func() { _ = run(0) }()
+			}
+		case <-menu["about"].ClickedCh:
+			if err := openBrowser("https://github.com/koltyakov/github-notify"); err != nil {
+				fmt.Printf("error opening browser: %s\n", err)
+			}
+		case <-menu["quit"].ClickedCh:
+			systray.Quit()
+			return
+		}
 	}
 }
 
@@ -150,12 +143,17 @@ func onEmptyToken() {
 
 // onNotification system tray menu on notifications change event handler
 func onNotification(num int, repos map[string]int) {
+	// Default overall notifications counter
+	title := fmt.Sprintf("%d", num)
+	// Additional counter for the number of repositories
 	if len(repos) > 1 && num != len(repos) {
-		// Shows additional counter for the number or repositories with notifications after "/" separator
-		setTitle(fmt.Sprintf("%d/%d", num, len(repos)))
-	} else {
-		// Shows only overall notifications counter
-		setTitle(fmt.Sprintf("%d", num))
+		title = fmt.Sprintf("%d/%d", num, len(repos))
+	}
+	setTitle(title)
+
+	// Show counter in menu for Linux
+	if runtime.GOOS == "linux" {
+		menu["notifications"].SetTitle(fmt.Sprintf("Notifications (%s)", title))
 	}
 
 	// No unread items
