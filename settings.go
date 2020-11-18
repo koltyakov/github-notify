@@ -25,6 +25,7 @@ func openSettings() (settings, bool, error) {
 	cnfg, upd, err := openInChrome()
 	if err != nil {
 		// ToDo: Check only an error with no Chrome found
+		fmt.Printf("%s\n", err)
 		// Workaround opening settigns file for manual edit
 		err = openInEditor()
 	}
