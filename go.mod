@@ -14,6 +14,7 @@ require (
 	github.com/kirsle/configdir v0.0.0-20170128060238-e45d2f54772f
 	github.com/koltyakov/gosip v0.0.0-20200909080900-becba6f2aedb
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
+	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/stretchr/testify v1.5.1 // indirect
 	github.com/zserge/lorca v0.1.9
 	golang.org/x/crypto v0.0.0-20201117144127-c1f2f97bffc9 // indirect

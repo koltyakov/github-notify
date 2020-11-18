@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/url"
 	"path/filepath"
 
 	"github.com/kirsle/configdir"
 	"github.com/koltyakov/gosip/cpass"
+	"github.com/skratchdot/open-golang/open"
 	"github.com/zserge/lorca"
 )
 
@@ -21,7 +21,24 @@ type settings struct {
 
 // openSettings opens Chrome window using Lorca, Chrome is required in the system
 // returns new or egsisting settings and a sign if the setting were updated
-func openSettings() (settings, bool) {
+func openSettings() (settings, bool, error) {
+	cnfg, upd, err := openInChrome()
+	if err != nil {
+		// ToDo: Check only an error with no Chrome found
+		// Workaround opening settigns file for manual edit
+		err = openInEditor()
+	}
+	return cnfg, upd, err
+}
+
+// openInEditor opens settings file in default text editor
+// for the cases, no Chrome is installed in the system
+func openInEditor() error {
+	return open.Run(getConfigPath())
+}
+
+// openInChrome opens settings in Chrome/Chromium using Lorca
+func openInChrome() (settings, bool, error) {
 	isUpdated := false
 
 	// Settings dialog window size
@@ -31,6 +48,12 @@ func openSettings() (settings, bool) {
 	}{
 		w: 540,
 		h: 380,
+	}
+
+	// Get saved or default settings
+	cnfg, err := getSettings()
+	if err != nil {
+		fmt.Printf("error: %s\n", err)
 	}
 
 	// Chrome Launch Switches arguments https://sites.google.com/site/chromeappupdates/launch-switches
@@ -45,28 +68,27 @@ func openSettings() (settings, bool) {
 	// Init Lorca window using embed HTML
 	ui, err := lorca.New("data:text/html,"+url.PathEscape(settingsHTMLTmpl), "", dlg.w, dlg.h, args...)
 	if err != nil {
-		log.Fatal(err)
+		// Can't open Chrome, likely is not installed
+		return cnfg, false, err
 	}
 
+	var savingErr error
 	if err := ui.Bind("saveSettings", func(settingsJSON string) {
-		var cnfg settings
-		if err := json.Unmarshal([]byte(settingsJSON), &cnfg); err != nil {
+		c := settings{}
+		if err := json.Unmarshal([]byte(settingsJSON), &c); err != nil {
 			fmt.Printf("unable to parse the response: %v\n", err)
 		} else {
-			if err := saveSettings(cnfg); err != nil {
-				fmt.Printf("error saving settings: %v\n", err)
+			if err := saveSettings(c); err != nil {
+				// fmt.Printf("error saving settings: %v\n", err)
+				savingErr = err
 			} else {
 				isUpdated = true
 			}
 		}
 		_ = ui.Close()
 	}); err != nil {
-		fmt.Printf("error binding handler: %s\n", err)
-	}
-
-	cnfg, err := getSettings()
-	if err != nil {
-		fmt.Printf("error: %s\n", err)
+		// fmt.Printf("error binding handler: %s\n", err)
+		return cnfg, false, fmt.Errorf("can't save settings: %v", err)
 	}
 
 	ui.Eval(`
@@ -78,9 +100,14 @@ func openSettings() (settings, bool) {
 	defer func() { _ = ui.Close() }()
 	<-ui.Done()
 
+	// An error has happened in save settings handler
+	if savingErr != nil {
+		return cnfg, false, fmt.Errorf("can't save settings: %v", savingErr)
+	}
+
 	// Return new settings
 	cnfg, _ = getSettings()
-	return cnfg, isUpdated
+	return cnfg, isUpdated, nil
 }
 
 // getSettings retrieves setting from disk or returns defaults
@@ -91,8 +118,7 @@ func getSettings() (settings, error) {
 	}
 
 	var cnfg settings
-	configPath := configdir.LocalConfig(appname)
-	configFile := filepath.Join(configPath, "settings.json")
+	configFile := getConfigPath()
 
 	configData, err := ioutil.ReadFile(configFile)
 	if err != nil {
@@ -110,12 +136,11 @@ func getSettings() (settings, error) {
 
 // saveSettings persists settings to disk
 func saveSettings(cnfg settings) error {
-	configPath := configdir.LocalConfig(appname)
-	if err := configdir.MakePath(configPath); err != nil {
+	configFile := getConfigPath()
+	configFolder := filepath.Dir(configFile)
+	if err := configdir.MakePath(configFolder); err != nil {
 		return err
 	}
-
-	configFile := filepath.Join(configPath, "settings.json")
 
 	cnfg.GithubToken, _ = cpass.Cpass("").Encode(cnfg.GithubToken)
 
@@ -129,4 +154,11 @@ func saveSettings(cnfg settings) error {
 	}
 
 	return nil
+}
+
+// getConfigPath gets application settings file path
+func getConfigPath() string {
+	configPath := configdir.LocalConfig(appname)
+	configFile := filepath.Join(configPath, "settings.json")
+	return configFile
 }

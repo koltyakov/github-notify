@@ -55,7 +55,11 @@ func onReady() {
 					fmt.Printf("error opening browser: %s\n", err)
 				}
 			case <-menu["settings"].ClickedCh:
-				if newCnfg, upd := openSettings(); upd {
+				newCnfg, upd, err := openSettings()
+				if err != nil {
+					onError(err)
+				}
+				if upd && err == nil {
 					cnfg = &newCnfg
 					menu["getToken"].Hide()
 					if cnfg.GithubToken == "" {
@@ -129,7 +133,7 @@ func run(timeout time.Duration) time.Duration {
 
 // onError system tray menu on error event handler
 func onError(err error) {
-	fmt.Printf("error: %s", err)
+	fmt.Printf("error: %s\n", err)
 	setTitle("Error")
 	setTooltip(fmt.Sprintf("Error: %s", err))
 	setIcon(icon.Err)
