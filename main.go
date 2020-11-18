@@ -3,16 +3,19 @@ package main
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/getlantern/systray"
-	"github.com/google/go-github/v32/github"
 
 	"github.com/koltyakov/github-notify/icon"
 )
 
 var appname = "github-notify"
 var running = true
+
+var cnfg = &settings{}
+var menu = map[string]*systray.MenuItem{}
 
 // Init systray applications
 func main() {
@@ -21,15 +24,14 @@ func main() {
 }
 
 func onReady() {
-	menu := map[string]*systray.MenuItem{}
+	setIcon(icon.Base)
+	setTitle("Loading...")
 
-	systray.SetIcon(icon.Base)
-	systray.SetTitle("Loading...")
-
-	cnfg, err := getSettings()
+	c, err := getSettings()
 	if err != nil {
 		onError(err)
 	}
+	cnfg = &c
 
 	// Menu items
 	menu["notifications"] = systray.AddMenuItem("Notifications", "")
@@ -54,13 +56,13 @@ func onReady() {
 				}
 			case <-menu["settings"].ClickedCh:
 				if newCnfg, upd := openSettings(); upd {
-					cnfg = newCnfg
+					cnfg = &newCnfg
 					menu["getToken"].Hide()
 					if cnfg.GithubToken == "" {
-						onEmptyToken(menu)
+						onEmptyToken()
 					}
 					// check updates immediately after settings change
-					_ = run(&cnfg, menu, 0)
+					go func() { _ = run(0) }()
 				}
 			case <-menu["about"].ClickedCh:
 				if err := openBrowser("https://github.com/koltyakov/github-notify"); err != nil {
@@ -76,19 +78,26 @@ func onReady() {
 	// Show get token item only when no token is provided
 	menu["getToken"].Hide()
 	if cnfg.GithubToken == "" {
-		onEmptyToken(menu)
+		onEmptyToken()
 	}
 
 	// Infinite service loop
 	for running {
-		<-time.After(
-			run(&cnfg, menu, 1*time.Second),
-		)
+		timeout := time.Duration(1 * time.Second)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		// Run in separate goroutine
+		go func() {
+			defer wg.Done()
+			timeout = run(timeout)
+		}()
+		wg.Wait()
+		<-time.After(timeout)
 	}
 }
 
 // run executes notification checks logic
-func run(cnfg *settings, menu map[string]*systray.MenuItem, timeout time.Duration) time.Duration {
+func run(timeout time.Duration) time.Duration {
 	// Get notification only when having access token
 	if cnfg.GithubToken != "" {
 		// Request GitHub API
@@ -100,7 +109,11 @@ func run(cnfg *settings, menu map[string]*systray.MenuItem, timeout time.Duratio
 				return 0 // continue
 			}
 		} else {
-			onNotification(notifications)
+			reposEvents := map[string]int{}
+			for _, n := range notifications {
+				reposEvents[*n.Repository.FullName] = reposEvents[*n.Repository.FullName] + 1
+			}
+			onNotification(len(notifications), reposEvents)
 		}
 
 		// Timeout duration from settings
@@ -117,41 +130,40 @@ func run(cnfg *settings, menu map[string]*systray.MenuItem, timeout time.Duratio
 // onError system tray menu on error event handler
 func onError(err error) {
 	fmt.Printf("error: %s", err)
-	systray.SetTitle("Error")
-	systray.SetTooltip(fmt.Sprintf("Error: %s", err))
-	systray.SetIcon(icon.Err)
+	setTitle("Error")
+	setTooltip(fmt.Sprintf("Error: %s", err))
+	setIcon(icon.Err)
 }
 
 // onEmptyToken system tray menu on empty token event handler
-func onEmptyToken(menu map[string]*systray.MenuItem) {
+func onEmptyToken() {
 	menu["getToken"].Show()
-	systray.SetTitle("No Token")
-	systray.SetTooltip("Error: no access token has been provided")
-	systray.SetIcon(icon.Err)
+	setTitle("No Token")
+	setTooltip("Error: no access token has been provided")
+	setIcon(icon.Err)
 }
 
 // onNotification system tray menu on notifications change event handler
-func onNotification(notifications []*github.Notification) {
-	tooltip := ""
-	reposEvents := map[string]int{}
-	for _, n := range notifications {
-		reposEvents[*n.Repository.FullName] = reposEvents[*n.Repository.FullName] + 1
-	}
-	for repo, cnt := range reposEvents {
-		tooltip = fmt.Sprintf("%s%s (%d)\n", tooltip, repo, cnt)
+func onNotification(num int, repos map[string]int) {
+	if len(repos) > 1 && num != len(repos) {
+		// Shows additional counter for the number or repositories with notifications after "/" separator
+		setTitle(fmt.Sprintf("%d/%d", num, len(repos)))
+	} else {
+		// Shows only overall notifications counter
+		setTitle(fmt.Sprintf("%d", num))
 	}
 
-	if len(reposEvents) > 1 {
-		systray.SetTitle(fmt.Sprintf("%d/%d", len(notifications), len(reposEvents)))
+	if num == 0 {
+		// No unread items
+		setIcon(icon.Base)
+		setTooltip("No unread notifications")
 	} else {
-		systray.SetTitle(fmt.Sprintf("%d", len(notifications)))
-	}
-
-	if len(notifications) == 0 {
-		systray.SetIcon(icon.Base)
-		systray.SetTooltip("No unread notifications")
-	} else {
-		systray.SetIcon(icon.Noti)
-		systray.SetTooltip(strings.Trim(tooltip, "\n"))
+		// Tooltip contains list of repositories with notifications counters
+		tooltip := ""
+		for repo, cnt := range repos {
+			tooltip = fmt.Sprintf("%s%s (%d)\n", tooltip, repo, cnt)
+		}
+		setIcon(icon.Noti)
+		setTooltip(strings.Trim(tooltip, "\n"))
 	}
 }
