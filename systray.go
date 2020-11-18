@@ -32,13 +32,16 @@ func setIcon(i *icon.Icon) {
 
 // setTooltip sets title in systray
 func setTitle(title string) {
+	// In Ubuntu, title update after 2nd time didn't work
+	// disabling titles completely for Linux for now
+	// ToDo: investigate
+	if runtime.GOOS == "linux" {
+		// systray.SetTitle("")
+		return
+	}
+
 	// Do nothing when a value didn't mutated
 	if tray.Title != title {
-		// Looks that some linux distros do not update title of the same text length
-		if runtime.GOOS == "linux" {
-			systray.SetTitle("")
-		}
-
 		tray.Title = title
 		systray.SetTitle(title)
 	}
