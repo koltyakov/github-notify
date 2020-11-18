@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/url"
 	"path/filepath"
+	"strings"
 
 	"github.com/kirsle/configdir"
 	"github.com/koltyakov/gosip/cpass"
@@ -24,10 +25,11 @@ type settings struct {
 func openSettings() (settings, bool, error) {
 	cnfg, upd, err := openInChrome()
 	if err != nil {
-		// ToDo: Check only an error with no Chrome found
-		fmt.Printf("%s\n", err)
-		// Workaround opening settigns file for manual edit
-		err = openInEditor()
+		// Check only an error with no Chrome found
+		if strings.Index(err.Error(), "fork/exec : no such file or directory") != -1 {
+			// Workaround opening settigns file for manual edit
+			err = openInEditor()
+		}
 	}
 	return cnfg, upd, err
 }
