@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -157,17 +158,29 @@ func onNotification(num int, repos map[string]int) {
 		setTitle(fmt.Sprintf("%d", num))
 	}
 
+	// No unread items
 	if num == 0 {
-		// No unread items
 		setIcon(icon.Base)
 		setTooltip("No unread notifications")
-	} else {
-		// Tooltip contains list of repositories with notifications counters
-		tooltip := ""
-		for repo, cnt := range repos {
-			tooltip = fmt.Sprintf("%s%s (%d)\n", tooltip, repo, cnt)
+		return
+	}
+
+	// Windows doesn't support long tooltip messages
+	if runtime.GOOS == "windows" {
+		tooltip := fmt.Sprintf("Notifications: %d", num)
+		if len(repos) > 1 && num != len(repos) {
+			tooltip = fmt.Sprintf("%s\nRepositories: %d", tooltip, len(repos))
 		}
 		setIcon(icon.Noti)
-		setTooltip(strings.Trim(tooltip, "\n"))
+		setTooltip(tooltip)
+		return
 	}
+
+	// Tooltip contains list of repositories with notifications counters
+	tooltip := ""
+	for repo, cnt := range repos {
+		tooltip = fmt.Sprintf("%s%s (%d)\n", tooltip, repo, cnt)
+	}
+	setIcon(icon.Noti)
+	setTooltip(strings.Trim(tooltip, "\n"))
 }
