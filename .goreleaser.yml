@@ -23,7 +23,7 @@ builds:
       - linux
     goarch:
       - amd64
-    skip: {{ ne .Os "linux" }}
+    skip: true
 
   - id: windows
     env:
@@ -57,7 +57,6 @@ archives:
 
 checksum:
   algorithm: sha256
-  # name_template: 'checksums.txt'
 
 snapshot:
   name_template: "{{ .Tag }}-next"
