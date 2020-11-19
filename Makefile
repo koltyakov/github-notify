@@ -1,7 +1,8 @@
-version := v0.0.0
+version := v0.0.0 # snapshot, `make version=v0.1.0 tag`
 author  := Andrew Koltyakov
 app     := GitHub Notify
 id      := com.koltyakov.github-notify
+ver     := $(version:v%=%)
 
 install:
 	go get -u ./... && go mod tidy
@@ -28,7 +29,6 @@ build:
 clean:
 	rm -rf bin/ dist/
 
-ver := $(version:v%=%)
 bundle-darwin: build-darwin
 	# Package solution to .app folder
 	cd bin/darwin/ && \
