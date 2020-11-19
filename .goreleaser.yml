@@ -59,7 +59,7 @@ checksum:
   algorithm: sha256
 
 snapshot:
-  name_template: "{{ .Tag }}-next"
+  name_template: 0.0.0-SNAPSHOT-{{.ShortCommit}}
 
 changelog:
   sort: asc

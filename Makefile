@@ -1,8 +1,7 @@
-version := v0.0.0 # snapshot, `make version=v0.1.0 tag`
+version := 0.0.0-SNAPSHOT # `make version=0.1.0 tag`
 author  := Andrew Koltyakov
 app     := GitHub Notify
 id      := com.koltyakov.github-notify
-ver     := $(version:v%=%)
 
 install:
 	go get -u ./... && go mod tidy
@@ -35,7 +34,7 @@ bundle-darwin: build-darwin
 		appify \
 			-author "$(author)" \
 			-id $(id) \
-			-version $(ver) \
+			-version $(version) \
 			-name "$(app)" \
 			-icon ../../assets/icon.png \
 			./github-notify
@@ -46,12 +45,12 @@ bundle-darwin: build-darwin
 		create-dmg --dmg-title='$(app)' '$(app).app' ./ \
 			|| true # ignore Error 2
 	# Rename .dmg appropriotely
-	mv 'bin/darwin/$(app) $(ver).dmg' bin/darwin/github-notify_v$(ver).dmg
+	mv 'bin/darwin/$(app) $(version).dmg' bin/darwin/github-notify_$(version).dmg
 	# Remove temp files
 	rm -rf 'bin/darwin/$(app).app'
 
 tag:
-	git tag -a v$(ver) -m "Version $(ver)"
+	git tag -a v$(version) -m "Version $(version)"
 	git push origin --tags
 
 release-snapshot:
