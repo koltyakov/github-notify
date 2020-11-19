@@ -1,3 +1,8 @@
+version := v0.0.0
+author  := Andrew Koltyakov
+app     := GitHub Notify
+id      := com.koltyakov.github-notify
+
 install:
 	go get -u ./... && go mod tidy
 
@@ -17,30 +22,44 @@ build-darwin:
 build-linux:
 	GOOS=linux GOARCH=amd64 go build -v -o bin/linux/github-notify ./
 
-# build: clean build-win build-darwin build-linux
-build: clean
+build:
 	go build -v -o bin/github-notify ./
 
 clean:
-	rm -rf bin/
+	rm -rf bin/ dist/
 
-bundle-darwin: clean build-darwin
+ver := $(version:v%=%)
+bundle-darwin: build-darwin
 	# Package solution to .app folder
-	go get github.com/machinebox/appify
 	cd bin/darwin/ && \
 		appify \
-			-author "Andrew Koltyakov" \
-			-id com.koltyakov.ghnotify \
-			-version 0.1.0 \
-			-name "GitHub Notify" \
+			-author "$(author)" \
+			-id $(id) \
+			-version $(ver) \
+			-name "$(app)" \
 			-icon ../../assets/icon.png \
 			./github-notify
-	/usr/libexec/PlistBuddy -c 'Add :LSUIElement bool true' 'bin/darwin/GitHub Notify.app/Contents/Info.plist'
-	rm 'bin/darwin/GitHub Notify.app/Contents/README'
+	/usr/libexec/PlistBuddy -c 'Add :LSUIElement bool true' 'bin/darwin/$(app).app/Contents/Info.plist'
+	rm 'bin/darwin/$(app).app/Contents/README'
 	# Package solution to .dmg image
 	cd bin/darwin/ && \
-		create-dmg --dmg-title='GitHub Notify' 'GitHub Notify.app' ./ \
+		create-dmg --dmg-title='$(app)' '$(app).app' ./ \
 			|| true # ignore Error 2
+	# Rename .dmg appropriotely
+	mv 'bin/darwin/$(app) $(ver).dmg' bin/darwin/github-notify_v$(ver).dmg
+	# Remove temp files
+	rm -rf 'bin/darwin/$(app).app'
+
+tag:
+	git tag -a v$(ver) -m "Version $(ver)"
+
+release-snapshot:
+	goreleaser --rm-dist --skip-publish --snapshot
+	cd dist && ls *.dmg | xargs shasum -a256 >> $$(ls *_checksums.txt)
+
+release:
+	goreleaser --rm-dist --skip-publish
+	cd dist && ls *.dmg | xargs shasum -a256 >> $$(ls *_checksums.txt)
 
 start: run # alias for run
 run:

@@ -1,0 +1,74 @@
+before:
+  hooks:
+    - make install
+
+builds:
+
+  - id: darwin
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+    hooks:
+      pre:
+       - cmd: make version={{.Version}} bundle-darwin
+       - cmd: mv bin/darwin/github-notify_{{.Version}}.dmg dist/
+
+  - id: linux
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+    skip: {{ ne .Os "linux" }}
+
+  - id: windows
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - windows
+    goarch:
+      - amd64
+    ldflags:
+      - -H=windowsgui
+
+archives:
+
+  - id: darwin
+    builds:
+    - darwin
+    - linux
+    replacements:
+      amd64: x86_64
+    files:
+      - LICENSE
+
+  - id: windows
+    builds:
+    - windows
+    replacements:
+      amd64: x86_64
+    format: zip
+    files:
+      - LICENSE
+
+checksum:
+  algorithm: sha256
+  # name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^.github:'
+      - '^docs:'
+      - '^test:'
+      - '^assets:'
+      - '^docs:'
+      - '^readme:'
