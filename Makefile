@@ -45,7 +45,7 @@ bundle-darwin: build-darwin
 		create-dmg --dmg-title='$(app)' '$(app).app' ./ \
 			|| true # ignore Error 2
 	# Rename .dmg appropriotely
-	mv 'bin/darwin/$(app) $(version).dmg' bin/darwin/github-notify_$(version).dmg
+	mv 'bin/darwin/$(app) $(version).dmg' bin/darwin/github-notify_$(version)_darwin_x86_64.dmg
 	# Remove temp files
 	rm -rf 'bin/darwin/$(app).app'
 

@@ -37,40 +37,51 @@ go get github.com/koltyakov/github-notify
 
 ## Run
 
-### macOS/Linux run
+### macOS
+
+Install from `.dmg` and run as any other application.
+
+### Windows
+
+Just run `github-notify.exe`.
+
+### Linux run
 
 ```bash
 nohup github-notify >/dev/null 2>&1 &
 ```
 
-or, in a sources folder,
+### From sources
 
 ```bash
 make start
 ```
 
-### Windows
+## Build
 
-Run `github-notify.exe`.
+### Build command
 
-## App bundle, macOS
+```bash
+make build-darwin
+make build-win
+make build-linux
+```
+
+**Prerequisites**
+
+The project uses these major dependencies and inherits their prerequisites:
+
+- [systray](https://github.com/getlantern/systray)
+- [Lorca](https://github.com/zserge/lorca)
+
+Due to the nature of `systray` package, the build for macOS can be done in a Mac, a linux build only on a Linux machine. Platform specific prerequisites are required.
+
+Windows cross build can be done from any platform.
+
+### App bundle (for macOS)
 
 ```bash
 make bundle-darwin
 ```
 
-As a result, the `GitHub Notify.app` should be found in `./bin/darwin`
-
-## Build
-
-### Prerequisites
-
-The project uses these major dependencies and inherits their prerequisites:
-- [systray](https://github.com/getlantern/systray)
-- [Lorca](https://github.com/zserge/lorca)
-
-### Build command
-
-```bash
-make build
-```
+As a result, the `.dmg` installer image should be found in `./dist` folder.
