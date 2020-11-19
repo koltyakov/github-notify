@@ -52,6 +52,7 @@ bundle-darwin: build-darwin
 
 tag:
 	git tag -a v$(ver) -m "Version $(ver)"
+	git push origin --tags
 
 release-snapshot:
 	goreleaser --rm-dist --skip-publish --snapshot
