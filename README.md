@@ -10,14 +10,13 @@
 |-|-|
 | macOS | ![systray_macOS](./assets/systray_macOS.png) |
 | Windows | ![systray_Windows](./assets/systray_Windows.png) |
+| Linux | ![systray_Linux](./assets/systray_Linux.png) |
 
 **Scenario**
 
 - I'm a maintainer or active watcher of some repositories at GitHub
 - I want to react to issues quickly
 - I prefer a status based humble info rather than agressive email or pop-ups
-- My daily driver is macOS machine
-- I prefer default Safari for browsing
 
 ## Demo
 
