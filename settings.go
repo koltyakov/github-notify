@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -22,13 +23,13 @@ type settings struct {
 
 // openSettings opens Chrome window using Lorca, Chrome is required in the system
 // returns new or egsisting settings and a sign if the setting were updated
-func openSettings() (settings, bool, error) {
-	cnfg, upd, err := openInChrome()
+func openSettings(ctx context.Context) (settings, bool, error) {
+	cnfg, upd, err := openInChrome(ctx)
 	if err != nil {
 		// Check only an error with no Chrome found
 		if strings.Index(err.Error(), "fork/exec : no such file or directory") != -1 {
 			// Workaround opening settings file for manual edit
-			err = openInEditor()
+			err = openInEditor(ctx)
 		}
 	}
 	return cnfg, upd, err
@@ -36,12 +37,12 @@ func openSettings() (settings, bool, error) {
 
 // openInEditor opens settings file in default text editor
 // for the cases, no Chrome is installed in the system
-func openInEditor() error {
+func openInEditor(ctx context.Context) error {
 	return open.Run(getConfigPath())
 }
 
 // openInChrome opens settings in Chrome/Chromium using Lorca
-func openInChrome() (settings, bool, error) {
+func openInChrome(ctx context.Context) (settings, bool, error) {
 	isUpdated := false
 
 	// Settings dialog window size
@@ -101,7 +102,11 @@ func openInChrome() (settings, bool, error) {
 
 	// Wait for settings page close
 	defer func() { _ = ui.Close() }()
-	<-ui.Done()
+	select {
+	case <-ui.Done():
+	case <-ctx.Done():
+		return cnfg, isUpdated, nil
+	}
 
 	// An error has happened in save settings handler
 	if savingErr != nil {

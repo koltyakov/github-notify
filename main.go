@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -15,10 +19,26 @@ var appname = "github-notify"
 
 var cnfg = &settings{}
 var menu = map[string]*systray.MenuItem{}
+var appCtx, appCtxCancel = context.WithCancel(context.Background())
 
 // Init systray applications
 func main() {
-	onExit := func() {}
+	// Graceful shutdown signalling
+	grace := make(chan os.Signal, 1)
+	signal.Notify(grace, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	// Systray exit handler
+	onExit := func() {
+		appCtxCancel()
+	}
+
+	// Graceful shutdown action
+	go func() {
+		<-grace
+		systray.Quit()
+	}()
+
+	// Initiate systray application
 	systray.Run(onReady, onExit)
 }
 
@@ -27,6 +47,7 @@ func onReady() {
 	setIcon(icon.Base)
 	setTitle("Loading...")
 
+	// Get app settings
 	c, err := getSettings()
 	if err != nil {
 		onError(err)
@@ -66,23 +87,11 @@ func menuActions() {
 				fmt.Printf("error opening browser: %s\n", err)
 			}
 		case <-menu["getToken"].ClickedCh:
-			if err := openBrowser("https://github.com/settings/tokens/new"); err != nil {
+			if err := openBrowser("https://github.com/settings/tokens/new?scopes=notifications&description=GitHub%20Notify%20App"); err != nil {
 				fmt.Printf("error opening browser: %s\n", err)
 			}
 		case <-menu["settings"].ClickedCh:
-			newCnfg, upd, err := openSettings()
-			if err != nil {
-				onError(err)
-			}
-			if upd && err == nil {
-				cnfg = &newCnfg
-				menu["getToken"].Hide()
-				if cnfg.GithubToken == "" {
-					onEmptyToken()
-				}
-				// check updates immediately after settings change
-				go func() { _ = run(0) }()
-			}
+			openSettingsHandler()
 		case <-menu["about"].ClickedCh:
 			if err := openBrowser("https://github.com/koltyakov/github-notify"); err != nil {
 				fmt.Printf("error opening browser: %s\n", err)
@@ -123,6 +132,27 @@ func run(timeout time.Duration) time.Duration {
 		timeout = d
 	}
 	return timeout
+}
+
+// openSettingsHandler handler
+func openSettingsHandler() {
+	menu["settings"].Disable()
+	go func() {
+		newCnfg, upd, err := openSettings(appCtx)
+		if err != nil {
+			onError(err)
+		}
+		menu["settings"].Enable()
+		if upd && err == nil {
+			cnfg = &newCnfg
+			menu["getToken"].Hide()
+			if cnfg.GithubToken == "" {
+				onEmptyToken()
+			}
+			// check updates immediately after settings change
+			go func() { _ = run(0) }()
+		}
+	}()
 }
 
 // onError system tray menu on error event handler
