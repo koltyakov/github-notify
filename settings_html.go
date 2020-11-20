@@ -27,16 +27,22 @@ var settingsHTMLTmpl = `
 			</div>
 			<div class="modal-body">
 				<div class="mb-3">
-					<label for="githubToken" class="form-label">GitHub Token</label>
+					<label for="githubToken" class="form-label">GitHub token</label>
 					<input type="password" class="form-control" id="githubToken">
 				</div>
 				<div class="mb-3">
-					<label for="updateFrequency" class="form-label">Update Frequency</label>
+					<label for="updateFrequency" class="form-label">Update frequency</label>
 					<select class="form-select" id="updateFrequency">
 						<option value="10s">High</option>
 						<option value="30s">Medium</option>
 						<option value="120s">Low</option>
 					</select>
+				</div>
+				<div class="form-check" style="display: none;">
+					<input class="form-check-input" type="checkbox" value="" id="desktopNotifications">
+					<label class="form-check-label" for="desktopNotifications">
+						Show desktop notifications
+					</label>
 				</div>
 			</div>
 			<div class="modal-footer">
@@ -46,24 +52,29 @@ var settingsHTMLTmpl = `
 		</div>
 		<script type="text/javascript">
 
+			// Restore default values
+			const formData = { githubToken, updateFrequency }; // desktopNotifications
+			Object.keys(formData).forEach((key) => {
+				const el = document.getElementById(key);
+				if (el) {
+					try {
+						el.value = formData[key] || '';
+					} catch (ex) { /**/ }
+				}
+			});
+			// document.getElementById("desktopNotifications").checked = desktopNotifications;
+
 			// Settings save handler
 			function save() {
 				const data = {
 					githubToken: document.getElementById("githubToken").value,
-					updateFrequency: document.getElementById("updateFrequency").value
+					updateFrequency: document.getElementById("updateFrequency").value,
+					// desktopNotifications: document.getElementById("desktopNotifications").checked
 				};
 				saveSettings(JSON.stringify(data));
 			}
 
-			// Restore default values
-			const formData = { githubToken, updateFrequency };
-			Object.keys(formData).forEach((key) => {
-				const el = document.getElementById(key);
-				if (el) {
-					el.value = formData[key] || '';
-				}
-			});
-
+			// Adapt window size handler
 			const fitWindowToFormSize = () => {
 				if (!window["formSize"]) {
 					const form = document.querySelector(".settings-form");
@@ -80,6 +91,7 @@ var settingsHTMLTmpl = `
 				}
 			};
 
+			// Center dialog window
 			const centerDialogWindow = () => {
 				window.moveTo(
 					(screen.availWidth - window.innerWidth)/2,
@@ -88,7 +100,7 @@ var settingsHTMLTmpl = `
 			};
 
 			// Window configuration
-			window.addEventListener("contextmenu", function(e) { e.preventDefault(); });
+			// window.addEventListener("contextmenu", function(e) { e.preventDefault(); });
 			fitWindowToFormSize();
 			// centerDialogWindow();
 

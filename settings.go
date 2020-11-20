@@ -19,6 +19,7 @@ import (
 type settings struct {
 	GithubToken     string `json:"githubToken"`
 	UpdateFrequency string `json:"updateFrequency"`
+	// DesktopNotifications bool   `json:"desktopNotifications"`
 }
 
 // openSettings opens Chrome window using Lorca, Chrome is required in the system
@@ -99,6 +100,7 @@ func openInChrome(ctx context.Context) (settings, bool, error) {
 		const githubToken = "` + cnfg.GithubToken + `";
 		const updateFrequency = "` + cnfg.UpdateFrequency + `";
 	`)
+	// const desktopNotifications = ` + fmt.Sprintf("%t", cnfg.DesktopNotifications) + `;
 
 	// Wait for settings page close
 	defer func() { _ = ui.Close() }()
