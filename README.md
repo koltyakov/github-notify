@@ -22,49 +22,31 @@
 
 ![demo](./assets/demo.gif)
 
-## Install
-
-```bash
-go get github.com/koltyakov/github-notify
-```
-
-## Config
-
-- Generate [GitHub access token](https://github.com/settings/tokens) (better select only Notifications access).
-- Provive the token in settings form.
-
-![settings](./assets/settings.png)
-
-## Run
+## Install/run
 
 ### macOS
 
-Install from `.dmg` and run as any other application.
+Install from [.dmg](https://github.com/koltyakov/github-notify/releases) and run as any other application.
 
 ### Windows
 
 Just run `github-notify.exe`.
 
-### Linux run
+### Linux
 
 ```bash
+go get github.com/koltyakov/github-notify
 nohup github-notify >/dev/null 2>&1 &
 ```
 
-### From sources
-
-```bash
-make start
-```
-
-## Build
+## Local development
 
 ### Build command
 
 ```bash
-make build-darwin
+make build-darwin # can be build in macOS only
 make build-win
-make build-linux
+make build-linux # can be build Linux only
 ```
 
 **Prerequisites**
@@ -77,6 +59,12 @@ The project uses these major dependencies and inherits their prerequisites:
 Due to the nature of `systray` package, the build for macOS can be done in a Mac, a linux build only on a Linux machine. Platform specific prerequisites are required.
 
 Windows cross build can be done from any platform.
+
+### Start command
+
+```bash
+make start
+```
 
 ### App bundle (for macOS)
 
