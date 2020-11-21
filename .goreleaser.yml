@@ -14,16 +14,22 @@ builds:
     hooks:
       pre:
        - cmd: make version={{.Version}} bundle-darwin
-       - cmd: mv bin/darwin/github-notify_{{.Version}}.dmg dist/
+       - cmd: mv bin/darwin/github-notify_{{.Version}}_darwin_x86_64.dmg dist/
 
   - id: linux
+    # skip: true
     env:
       - CGO_ENABLED=1
     goos:
-      - linux
+      # - linux
+      - darwin # fake linux build in macOS in Docker
     goarch:
       - amd64
-    skip: true
+    hooks:
+      post:
+       - cmd: make bundle-linux
+       - cmd: rm dist/linux_darwin_amd64/github-notify
+       - cmd: mv bin/linux/github-notify dist/linux_darwin_amd64
 
   - id: windows
     env:
@@ -40,8 +46,16 @@ archives:
   - id: darwin
     builds:
     - darwin
+    replacements:
+      amd64: x86_64
+    files:
+      - LICENSE
+
+  - id: linux
+    builds:
     - linux
     replacements:
+      darwin: linux
       amd64: x86_64
     files:
       - LICENSE

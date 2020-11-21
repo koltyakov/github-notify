@@ -49,6 +49,10 @@ bundle-darwin: build-darwin
 	# Remove temp files
 	rm -rf 'bin/darwin/$(app).app'
 
+bundle-linux:
+	docker build . -t github-notify
+	docker run -v $$PWD/bin:/build/bin -t github-notify make build-linux
+
 tag:
 	git tag -a v$(version) -m "Version $(version)"
 	git push origin --tags

@@ -1,0 +1,17 @@
+# Ignore everything
+**
+
+# Allow files and directories
+!/*.go
+# !/**/*.go didn't work
+!/icon/*.go
+!/Makefile
+!/.goreleaser.yml
+!/go.mod
+!/go.sum
+
+# Ignore unnecessary files inside allowed directories
+**/*~
+**/*.log
+**/.DS_Store
+**/Thumbs.db

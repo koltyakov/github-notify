@@ -73,3 +73,10 @@ make bundle-darwin
 ```
 
 As a result, the `.dmg` installer image should be found in `./dist` folder.
+
+### Linux build with Docker
+
+```bash
+docker build . -t github-notify
+docker run -v $PWD/bin:/build/bin -it github-notify make build-linux
+```
