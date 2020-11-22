@@ -23,3 +23,9 @@ var Noti = &Icon{
 	Data: notiIcon,
 	Name: "notification",
 }
+
+// Warn bytes array icon representation
+var Warn = &Icon{
+	Data: warnIcon,
+	Name: "warning",
+}

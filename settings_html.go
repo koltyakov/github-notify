@@ -44,6 +44,11 @@ var settingsHTMLTmpl = `
 						Show desktop notifications
 					</label>
 				</div>
+				<div class="mb-3">
+					<label for="favouriteRepos" class="form-label">Favourite repositiries</label>
+					<textarea class="form-control" id="favouriteRepos" rows="2"></textarea>
+					<div class="form-text">Comma separated list of repositories.</div>
+				</div>
 			</div>
 			<div class="modal-footer">
 				<button type="button" class="btn btn-secondary" data-dismiss="modal" onclick="window.close()">Close</button>
@@ -53,22 +58,26 @@ var settingsHTMLTmpl = `
 		<script type="text/javascript">
 
 			// Restore default values
-			const formData = { githubToken, updateFrequency }; // desktopNotifications
-			Object.keys(formData).forEach((key) => {
+			Object.keys(settings).forEach((key) => {
 				const el = document.getElementById(key);
-				if (el) {
+				if (el && typeof settings[key] === "string") {
 					try {
-						el.value = formData[key] || '';
-					} catch (ex) { /**/ }
+						el.value = settings[key] || '';
+					} catch {}
 				}
 			});
 			// document.getElementById("desktopNotifications").checked = desktopNotifications;
+			document.getElementById("favouriteRepos").value = settings.favouriteRepos.join(", ");
 
 			// Settings save handler
 			function save() {
 				const data = {
 					githubToken: document.getElementById("githubToken").value,
 					updateFrequency: document.getElementById("updateFrequency").value,
+					favouriteRepos: [ ...new Set(
+						document.getElementById("favouriteRepos").value
+							.replace(/;/g, ",").split(",").map((repo) => repo.trim())
+					)],
 					// desktopNotifications: document.getElementById("desktopNotifications").checked
 				};
 				saveSettings(JSON.stringify(data));

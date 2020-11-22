@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -73,7 +72,7 @@ func onReady() {
 
 	// Infinite service loop
 	for {
-		<-time.After(run(1 * time.Second))
+		<-time.After(run(1*time.Second, cnfg))
 	}
 }
 
@@ -104,7 +103,7 @@ func menuActions() {
 }
 
 // run executes notification checks logic
-func run(timeout time.Duration) time.Duration {
+func run(timeout time.Duration, cnfg *settings) time.Duration {
 	// Get notification only when having access token
 	if cnfg.GithubToken != "" {
 		// Request GitHub API
@@ -120,7 +119,7 @@ func run(timeout time.Duration) time.Duration {
 			for _, n := range notifications {
 				reposEvents[*n.Repository.FullName] = reposEvents[*n.Repository.FullName] + 1
 			}
-			onNotification(len(notifications), reposEvents)
+			onNotification(len(notifications), reposEvents, cnfg.FavouriteRepos)
 		}
 
 		// Timeout duration from settings
@@ -150,7 +149,7 @@ func openSettingsHandler() {
 				onEmptyToken()
 			}
 			// check updates immediately after settings change
-			go func() { _ = run(0) }()
+			go func() { _ = run(0, cnfg) }()
 		}
 	}()
 }
@@ -169,46 +168,4 @@ func onEmptyToken() {
 	setTitle("No Token")
 	setTooltip("Error: no access token has been provided")
 	setIcon(icon.Err)
-}
-
-// onNotification system tray menu on notifications change event handler
-func onNotification(num int, repos map[string]int) {
-	// Default overall notifications counter
-	title := fmt.Sprintf("%d", num)
-	// Additional counter for the number of repositories
-	if len(repos) > 1 && num != len(repos) {
-		title = fmt.Sprintf("%d/%d", num, len(repos))
-	}
-	setTitle(title)
-
-	// Show counter in menu for Linux
-	if runtime.GOOS == "linux" {
-		menu["notifications"].SetTitle(fmt.Sprintf("Notifications (%s)", title))
-	}
-
-	// No unread items
-	if num == 0 {
-		setIcon(icon.Base)
-		setTooltip("No unread notifications")
-		return
-	}
-
-	// Windows doesn't support long tooltip messages
-	if runtime.GOOS == "windows" {
-		tooltip := fmt.Sprintf("Notifications: %d", num)
-		if len(repos) > 1 && num != len(repos) {
-			tooltip = fmt.Sprintf("%s\nRepositories: %d", tooltip, len(repos))
-		}
-		setIcon(icon.Noti)
-		setTooltip(tooltip)
-		return
-	}
-
-	// Tooltip contains list of repositories with notifications counters
-	tooltip := ""
-	for repo, cnt := range repos {
-		tooltip = fmt.Sprintf("%s%s (%d)\n", tooltip, repo, cnt)
-	}
-	setIcon(icon.Noti)
-	setTooltip(strings.Trim(tooltip, "\n"))
 }

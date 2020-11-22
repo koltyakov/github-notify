@@ -17,8 +17,9 @@ import (
 
 // settings structure
 type settings struct {
-	GithubToken     string `json:"githubToken"`
-	UpdateFrequency string `json:"updateFrequency"`
+	GithubToken     string   `json:"githubToken"`
+	UpdateFrequency string   `json:"updateFrequency"`
+	FavouriteRepos  []string `json:"favouriteRepos"`
 	// DesktopNotifications bool   `json:"desktopNotifications"`
 }
 
@@ -64,6 +65,7 @@ func openInChrome(ctx context.Context) (settings, bool, error) {
 	// Chrome Launch Switches arguments https://sites.google.com/site/chromeappupdates/launch-switches
 	var args []string
 
+	// Require a cross platform screen size detection
 	// args = append(args, fmt.Sprintf(
 	// 	"--window-position=%d,%d",
 	// 	(int(screenWidth)-dlg.w)/2,
@@ -96,11 +98,9 @@ func openInChrome(ctx context.Context) (settings, bool, error) {
 		return cnfg, false, fmt.Errorf("can't save settings: %v", err)
 	}
 
-	ui.Eval(`
-		const githubToken = "` + cnfg.GithubToken + `";
-		const updateFrequency = "` + cnfg.UpdateFrequency + `";
-	`)
-	// const desktopNotifications = ` + fmt.Sprintf("%t", cnfg.DesktopNotifications) + `;
+	// Binding existing settings values
+	jsonBytes, _ := json.Marshal(cnfg)
+	ui.Eval(fmt.Sprintf("const settings = %s;", jsonBytes))
 
 	// Wait for settings page close
 	defer func() { _ = ui.Close() }()
@@ -125,6 +125,7 @@ func getSettings() (settings, error) {
 	var defaults = settings{
 		GithubToken:     "",
 		UpdateFrequency: "30s",
+		FavouriteRepos:  make([]string, 0),
 	}
 
 	var cnfg settings
@@ -140,6 +141,10 @@ func getSettings() (settings, error) {
 	}
 
 	cnfg.GithubToken, _ = cpass.Cpass("").Decode(cnfg.GithubToken)
+
+	if cnfg.FavouriteRepos == nil {
+		cnfg.FavouriteRepos = make([]string, 0)
+	}
 
 	return cnfg, nil
 }
