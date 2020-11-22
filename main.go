@@ -14,7 +14,10 @@ import (
 	"github.com/koltyakov/github-notify/icon"
 )
 
-var appname = "github-notify"
+var (
+	appname = "github-notify"
+	version string
+)
 
 var cnfg = &settings{}
 var menu = map[string]*systray.MenuItem{}

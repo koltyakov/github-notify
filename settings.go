@@ -63,7 +63,7 @@ func openInChrome(ctx context.Context) (settings, bool, error) {
 	var args []string
 	// args = append(args, "--headless")
 
-	if srcn, err := getScreenSize(); err == nil {
+	if srcn, err := getScreenSize(); err == nil && srcn.Heigth != 0 && srcn.Width != 0 {
 		args = append(args, fmt.Sprintf(
 			"--window-position=%d,%d",
 			(int(srcn.Width)-dlg.Width)/2,
@@ -95,6 +95,11 @@ func openInChrome(ctx context.Context) (settings, bool, error) {
 	}); err != nil {
 		// fmt.Printf("error binding handler: %s\n", err)
 		return cnfg, false, fmt.Errorf("can't save settings: %v", err)
+	}
+
+	// Set title with version
+	if getAppVersion() != "0.0.0-SNAPSHOT" {
+		ui.Eval(fmt.Sprintf(`document.title += ", v.%s";`, getAppVersion()))
 	}
 
 	// Binding existing settings values
@@ -175,4 +180,12 @@ func getConfigPath() string {
 	configPath := configdir.LocalConfig(appname)
 	configFile := filepath.Join(configPath, "settings.json")
 	return configFile
+}
+
+// getAppVersion gets application version number
+func getAppVersion() string {
+	if len(version) == 0 {
+		return "0.0.0-SNAPSHOT"
+	}
+	return version
 }

@@ -14,13 +14,13 @@ generate:
 	make format
 
 build-win:
-	GOOS=windows GOARCH=amd64 go build -v -ldflags "-H=windowsgui" -o bin/win/github-notify.exe ./
+	GOOS=windows GOARCH=amd64 go build -v -ldflags "-s -w -X main.version=$(version) -H=windowsgui" -o bin/win/github-notify.exe ./
 
 build-darwin:
-	GOOS=darwin GOARCH=amd64 go build -v -o bin/darwin/github-notify ./
+	GOOS=darwin GOARCH=amd64 go build -v -ldflags "-s -w -X main.version=$(version)" -o bin/darwin/github-notify ./
 
 build-linux:
-	GOOS=linux GOARCH=amd64 go build -v -o bin/linux/github-notify ./
+	GOOS=linux GOARCH=amd64 go build -v -ldflags "-s -w -X main.version=$(version)" -o bin/linux/github-notify ./
 
 build:
 	go build -v -o bin/github-notify ./
@@ -51,7 +51,7 @@ bundle-darwin: build-darwin
 
 bundle-linux:
 	docker build . -t github-notify
-	docker run -v $$PWD/bin:/build/bin -t github-notify make build-linux
+	docker run -v $$PWD/bin:/build/bin -t github-notify make version=$(version) build-linux
 
 tag:
 	git tag -a v$(version) -m "Version $(version)"
