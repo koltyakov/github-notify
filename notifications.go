@@ -58,7 +58,7 @@ func onNotification(num int, repos map[string]int, favRepos []string) {
 	setTitle(title)
 
 	// Notifications tooltip
-	tooltip := getNotificationsTooltip(num, repos)
+	tooltip := getNotificationsTooltip(num, favNum, repos)
 	setTooltip(tooltip)
 
 	// Show counter in menu for Linux
@@ -105,10 +105,13 @@ func getNotificationsTitle(num int, favNum int, repos map[string]int) string {
 }
 
 // getNotificationsTooltip constructs tooltip string
-func getNotificationsTooltip(num int, repos map[string]int) string {
+func getNotificationsTooltip(num int, favNum int, repos map[string]int) string {
 	// Windows doesn't support long tooltip messages
 	if runtime.GOOS == "windows" {
 		tooltip := fmt.Sprintf("Notifications: %d", num)
+		if favNum > 0 {
+			tooltip = fmt.Sprintf("%s\nIn favourite: %d", tooltip, favNum)
+		}
 		if len(repos) > 1 && num != len(repos) {
 			tooltip = fmt.Sprintf("%s\nRepositories: %d", tooltip, len(repos))
 		}
