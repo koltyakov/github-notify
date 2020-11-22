@@ -19,7 +19,7 @@ var (
 	version string
 )
 
-var cnfg = &settings{}
+var appConf = &settings{}
 var menu = map[string]*systray.MenuItem{}
 var appCtx, appCtxCancel = context.WithCancel(context.Background())
 
@@ -61,28 +61,34 @@ func onReady() {
 	if err != nil {
 		onError(err)
 	}
-	cnfg = &c
+	appConf = &c
 
 	// Menu items
-	menu["notifications"] = systray.AddMenuItem("Notifications", "")
-	menu["getToken"] = systray.AddMenuItem("Get Token", "")
-	menu["settings"] = systray.AddMenuItem("Settings", "")
+	menu["notifications"] = systray.AddMenuItem("Notifications", "Open notifications on GitHub")
+	menu["filter"] = systray.AddMenuItem("Filter mode", "") // "Notifications filter mode switch")
+	menu["filter:all"] = menu["filter"].AddSubMenuItem("All notifications", "Show all notifications")
+	menu["filter:favorite"] = menu["filter"].AddSubMenuItem("Favorite repos", "Show notification only from favorite repositories")
+	menu["getToken"] = systray.AddMenuItem("Get Token", "Open token creation page")
+	menu["settings"] = systray.AddMenuItem("Settings", "Open applications settings")
 	systray.AddSeparator()
 	menu["about"] = systray.AddMenuItem("About", "About GitHub Notify")
 	menu["quit"] = systray.AddMenuItem("Quit", "Quit GitHub Notify")
+
+	// Notification filters
+	checkNotificationMode(appConf.FiltersMode)
 
 	// Menu actions
 	go menuActions()
 
 	// Show get token item only when no token is provided
 	menu["getToken"].Hide()
-	if cnfg.GithubToken == "" {
+	if appConf.GithubToken == "" {
 		onEmptyToken()
 	}
 
 	// Infinite service loop
 	for {
-		<-time.After(run(1*time.Second, cnfg))
+		<-time.After(run(1*time.Second, appConf))
 	}
 }
 
@@ -92,19 +98,17 @@ func menuActions() {
 	for {
 		select {
 		case <-menu["notifications"].ClickedCh:
-			if err := openBrowser("https://github.com/notifications?query=is%3Aunread"); err != nil {
-				fmt.Printf("error opening browser: %s\n", err)
-			}
+			onOpenLinkHandler("https://github.com/notifications?query=is%3Aunread")
+		case <-menu["filter:all"].ClickedCh:
+			onNotificationModeChange("all")
+		case <-menu["filter:favorite"].ClickedCh:
+			onNotificationModeChange("favorite")
 		case <-menu["getToken"].ClickedCh:
-			if err := openBrowser("https://github.com/settings/tokens/new?scopes=notifications&description=GitHub%20Notify%20App"); err != nil {
-				fmt.Printf("error opening browser: %s\n", err)
-			}
+			onOpenLinkHandler("https://github.com/settings/tokens/new?scopes=notifications&description=GitHub%20Notify%20App")
 		case <-menu["settings"].ClickedCh:
 			openSettingsHandler()
 		case <-menu["about"].ClickedCh:
-			if err := openBrowser("https://github.com/koltyakov/github-notify"); err != nil {
-				fmt.Printf("error opening browser: %s\n", err)
-			}
+			onOpenLinkHandler("https://github.com/koltyakov/github-notify")
 		case <-menu["quit"].ClickedCh:
 			systray.Quit()
 			return
@@ -129,7 +133,7 @@ func run(timeout time.Duration, cnfg *settings) time.Duration {
 			for _, n := range notifications {
 				reposEvents[*n.Repository.FullName] = reposEvents[*n.Repository.FullName] + 1
 			}
-			onNotification(len(notifications), reposEvents, cnfg.FavoriteRepos)
+			onNotification(len(notifications), reposEvents, cnfg)
 		}
 
 		// Timeout duration from settings
@@ -153,13 +157,13 @@ func openSettingsHandler() {
 		}
 		menu["settings"].Enable()
 		if upd && err == nil {
-			cnfg = &newCnfg
+			appConf = &newCnfg
 			menu["getToken"].Hide()
-			if cnfg.GithubToken == "" {
+			if appConf.GithubToken == "" {
 				onEmptyToken()
 			}
 			// check updates immediately after settings change
-			go func() { _ = run(0, cnfg) }()
+			go func() { _ = run(0, appConf) }()
 		}
 	}()
 }
@@ -178,4 +182,37 @@ func onEmptyToken() {
 	setTitle("No Token")
 	setTooltip("Error: no access token has been provided")
 	setIcon(icon.Err)
+}
+
+// onNotificationModeChange notification mode (all, favorite) change handler
+func onNotificationModeChange(mode string) {
+	c, err := setFilterMode(mode)
+	if err != nil {
+		fmt.Printf("error: %s\n", err)
+		return
+	}
+	appConf = &c
+	checkNotificationMode(mode)
+	go func() { _ = run(0, appConf) }()
+}
+
+// checkNotificationMode sets check mark to a notification mode item
+// unchecks other selected modes
+func checkNotificationMode(mode string) {
+	for mKey, mItem := range menu {
+		if strings.Index(mKey, "filter:") != -1 {
+			if mKey == "filter:"+appConf.FiltersMode {
+				mItem.Check()
+				continue
+			}
+			mItem.Uncheck()
+		}
+	}
+}
+
+// onOpenLinkHandler on open link handler
+func onOpenLinkHandler(url string) {
+	if err := openBrowser(url); err != nil {
+		fmt.Printf("error opening browser: %s\n", err)
+	}
 }

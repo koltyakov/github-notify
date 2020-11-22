@@ -34,7 +34,15 @@ func getNotifications(accessToken string) ([]*github.Notification, error) {
 }
 
 // onNotification system tray menu on notifications change event handler
-func onNotification(num int, repos map[string]int, favRepos []string) {
+func onNotification(num int, repos map[string]int, cnfg *settings) {
+	// Notification in favoutite repos
+	favNum := favReposEvents(repos, cnfg)
+
+	// Filter mode
+	if cnfg.FiltersMode == "favorite" {
+		num = favNum
+	}
+
 	// No unread items
 	if num == 0 {
 		setTitle("0")
@@ -42,9 +50,6 @@ func onNotification(num int, repos map[string]int, favRepos []string) {
 		setTooltip("No unread notifications")
 		return
 	}
-
-	// Notification in favoutite repos
-	favNum := favRepoNotifications(repos, favRepos)
 
 	// Notifications icon
 	if favNum > 0 {
@@ -54,11 +59,11 @@ func onNotification(num int, repos map[string]int, favRepos []string) {
 	}
 
 	// Notifications title
-	title := getNotificationsTitle(num, favNum, repos)
+	title := getNotificationsTitle(num, favNum, repos, cnfg)
 	setTitle(title)
 
 	// Notifications tooltip
-	tooltip := getNotificationsTooltip(num, favNum, repos)
+	tooltip := getNotificationsTooltip(num, favNum, repos, cnfg)
 	setTooltip(tooltip)
 
 	// Show counter in menu for Linux
@@ -67,25 +72,49 @@ func onNotification(num int, repos map[string]int, favRepos []string) {
 	}
 }
 
-// favRepoNotifications gets events notifications in favorite repositiries
-func favRepoNotifications(repos map[string]int, favRepos []string) int {
+// favReposEvents gets events notifications in favorite repositories
+func favReposEvents(repos map[string]int, cnfg *settings) int {
 	favNum := 0
-	for repo, cnt := range repos {
+	for repoName, eventsCnt := range repos {
 		isFavorite := false
-		for _, favRepo := range favRepos {
-			if matched, _ := regexp.MatchString(favRepo, repo); matched {
+		for _, favRepo := range cnfg.FavoriteRepos {
+			if matched, _ := regexp.MatchString(favRepo, repoName); matched {
 				isFavorite = true
 			}
 		}
 		if isFavorite {
-			favNum += cnt
+			favNum += eventsCnt
 		}
 	}
 	return favNum
 }
 
+// favRepoNotifications gets events notifications in favorite repositories
+func favReposNoti(repos map[string]int, cnfg *settings) map[string]int {
+	favRepos := map[string]int{}
+	for repoName, eventsCnt := range repos {
+		isFavorite := false
+		for _, favRepo := range cnfg.FavoriteRepos {
+			if matched, _ := regexp.MatchString(favRepo, repoName); matched {
+				isFavorite = true
+			}
+		}
+		if isFavorite {
+			favRepos[repoName] = eventsCnt
+		}
+	}
+	return favRepos
+}
+
 // getNotificationsTitle constructs title string with counters
-func getNotificationsTitle(num int, favNum int, repos map[string]int) string {
+func getNotificationsTitle(num int, favNum int, repos map[string]int, cnfg *settings) string {
+	// Filter mode
+	if cnfg.FiltersMode == "favorite" {
+		num = favNum
+		favNum = 0
+		repos = favReposNoti(repos, cnfg)
+	}
+
 	// Default overall notifications counter
 	title := fmt.Sprintf("%d", num)
 	// There are notification in favorite repositories
@@ -105,7 +134,14 @@ func getNotificationsTitle(num int, favNum int, repos map[string]int) string {
 }
 
 // getNotificationsTooltip constructs tooltip string
-func getNotificationsTooltip(num int, favNum int, repos map[string]int) string {
+func getNotificationsTooltip(num int, favNum int, repos map[string]int, cnfg *settings) string {
+	// Filter mode
+	if cnfg.FiltersMode == "favorite" {
+		num = favNum
+		favNum = 0
+		repos = favReposNoti(repos, cnfg)
+	}
+
 	// Windows doesn't support long tooltip messages
 	if runtime.GOOS == "windows" {
 		tooltip := fmt.Sprintf("Notifications: %d", num)

@@ -18,8 +18,9 @@ import (
 // settings structure
 type settings struct {
 	GithubToken     string   `json:"githubToken"`
-	UpdateFrequency string   `json:"updateFrequency"`
+	UpdateFrequency string   `json:"updateFrequency"` // posible values: "10s", "30s", ...
 	FavoriteRepos   []string `json:"favoriteRepos"`
+	FiltersMode     string   `json:"filtersMode"` // posible values: "all", "favorite"
 	// DesktopNotifications bool   `json:"desktopNotifications"`
 }
 
@@ -97,14 +98,16 @@ func openInChrome(ctx context.Context) (settings, bool, error) {
 		return cnfg, false, fmt.Errorf("can't save settings: %v", err)
 	}
 
-	// Set title with version
 	if getAppVersion() != "0.0.0-SNAPSHOT" {
+		// Set title with version
 		ui.Eval(fmt.Sprintf(`document.title += ", v.%s";`, getAppVersion()))
+		// Block context menu
+		ui.Eval(`window.addEventListener("contextmenu", function(e) { e.preventDefault(); });`)
 	}
 
 	// Binding existing settings values
 	jsonBytes, _ := json.Marshal(cnfg)
-	ui.Eval(fmt.Sprintf("const settings = %s;", jsonBytes))
+	ui.Eval(fmt.Sprintf("const currentSettings = %s;", jsonBytes))
 
 	// Wait for settings page close
 	defer func() { _ = ui.Close() }()
@@ -130,6 +133,7 @@ func getSettings() (settings, error) {
 		GithubToken:     "",
 		UpdateFrequency: "30s",
 		FavoriteRepos:   make([]string, 0),
+		FiltersMode:     "all",
 	}
 
 	var cnfg settings
@@ -148,6 +152,10 @@ func getSettings() (settings, error) {
 
 	if cnfg.FavoriteRepos == nil {
 		cnfg.FavoriteRepos = make([]string, 0)
+	}
+
+	if cnfg.FiltersMode == "" {
+		cnfg.FiltersMode = "all"
 	}
 
 	return cnfg, nil
@@ -188,4 +196,15 @@ func getAppVersion() string {
 		return "0.0.0-SNAPSHOT"
 	}
 	return version
+}
+
+// setFilterMode changes notifications filter mode
+func setFilterMode(mode string) (settings, error) {
+	cnfg, err := getSettings()
+	if err != nil {
+		return cnfg, err
+	}
+	cnfg.FiltersMode = mode
+	err = saveSettings(cnfg)
+	return cnfg, err
 }

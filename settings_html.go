@@ -57,6 +57,9 @@ var settingsHTMLTmpl = `
 			</div>
 		</div>
 		<script type="text/javascript">
+			// Bind settings
+			const settings = currentSettings;
+
 			// Restore default values
 			Object.keys(settings).forEach((key) => {
 				const el = document.getElementById(key);
@@ -72,13 +75,13 @@ var settingsHTMLTmpl = `
 			// Settings save handler
 			function save() {
 				const data = {
+					...settings,
 					githubToken: document.getElementById("githubToken").value,
 					updateFrequency: document.getElementById("updateFrequency").value,
 					favoriteRepos: [ ...new Set(
 						document.getElementById("favoriteRepos").value
 							.replace(/;/g, ",").split(",").map((repo) => repo.trim())
-					)],
-					// desktopNotifications: document.getElementById("desktopNotifications").checked
+					)]
 				};
 				saveSettings(JSON.stringify(data));
 			}
@@ -112,7 +115,6 @@ var settingsHTMLTmpl = `
 			};
 
 			// Window configuration
-			// window.addEventListener("contextmenu", function(e) { e.preventDefault(); });
 			fitWindowToFormSize();
 			centerDialogWindow();
 		</script>
