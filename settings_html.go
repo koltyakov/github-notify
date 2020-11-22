@@ -90,7 +90,7 @@ var settingsHTMLTmpl = `
 					if (form) {
 						window["formSize"] = {
 							width: form.clientWidth,
-							height: form.clientHeight + 30
+							height: form.clientHeight + (window.outerHeight - window.innerHeight)
 						};
 					}
 				}
@@ -101,15 +101,18 @@ var settingsHTMLTmpl = `
 			};
 
 			// Center dialog window
-			const centerDialogWindow = () => {
-				window.moveTo(
-					(screen.availWidth - window.innerWidth)/2,
-					(screen.availHeight - window.innerHeight)/2
-				);
-			};
+			// const centerDialogWindow = () => {
+			// 	let left = (screen.availWidth - window.outerWidth)/2;
+			// 	let top = (screen.availHeight - window.innerHeight)/2;
+			// 	if (window["formSize"]) {
+			// 		left = (screen.availWidth - window["formSize"]["width"])/2;
+			// 		top = (screen.availHeight - window["formSize"]["height"])/2;
+			// 	}
+			// 	window.moveTo(left, top);
+			// };
 
 			// Window configuration
-			// window.addEventListener("contextmenu", function(e) { e.preventDefault(); });
+			window.addEventListener("contextmenu", function(e) { e.preventDefault(); });
 			fitWindowToFormSize();
 			// centerDialogWindow();
 
