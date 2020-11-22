@@ -67,17 +67,17 @@ func onNotification(num int, repos map[string]int, favRepos []string) {
 	}
 }
 
-// favRepoNotifications gets events notifications in favourite repositiries
+// favRepoNotifications gets events notifications in favorite repositiries
 func favRepoNotifications(repos map[string]int, favRepos []string) int {
 	favNum := 0
 	for repo, cnt := range repos {
-		isfavourite := false
+		isFavorite := false
 		for _, favRepo := range favRepos {
 			if matched, _ := regexp.MatchString(favRepo, repo); matched {
-				isfavourite = true
+				isFavorite = true
 			}
 		}
-		if isfavourite {
+		if isFavorite {
 			favNum += cnt
 		}
 	}
@@ -88,10 +88,10 @@ func favRepoNotifications(repos map[string]int, favRepos []string) int {
 func getNotificationsTitle(num int, favNum int, repos map[string]int) string {
 	// Default overall notifications counter
 	title := fmt.Sprintf("%d", num)
-	// There are notification in favourite repositories
+	// There are notification in favorite repositories
 	if favNum > 0 {
 		if favNum == num {
-			// All notifications are in favourite repos
+			// All notifications are in favorite repos
 			title = fmt.Sprintf("%d!", favNum)
 		} else {
 			title = fmt.Sprintf("%d!/%d", favNum, num)
@@ -110,7 +110,7 @@ func getNotificationsTooltip(num int, favNum int, repos map[string]int) string {
 	if runtime.GOOS == "windows" {
 		tooltip := fmt.Sprintf("Notifications: %d", num)
 		if favNum > 0 {
-			tooltip = fmt.Sprintf("%s\nIn favourite: %d", tooltip, favNum)
+			tooltip = fmt.Sprintf("%s\nIn favorite: %d", tooltip, favNum)
 		}
 		if len(repos) > 1 && num != len(repos) {
 			tooltip = fmt.Sprintf("%s\nRepositories: %d", tooltip, len(repos))

@@ -45,9 +45,9 @@ var settingsHTMLTmpl = `
 					</label>
 				</div>
 				<div class="mb-3">
-					<label for="favouriteRepos" class="form-label">Favourite repositiries</label>
-					<textarea class="form-control" id="favouriteRepos" rows="2"></textarea>
-					<div class="form-text">Comma separated list of repositories.</div>
+					<label for="favoriteRepos" class="form-label">Favorite repositiries</label>
+					<textarea class="form-control" id="favoriteRepos" rows="2"></textarea>
+					<div class="form-text">Comma-separated list of repositories.</div>
 				</div>
 			</div>
 			<div class="modal-footer">
@@ -67,15 +67,15 @@ var settingsHTMLTmpl = `
 				}
 			});
 			// document.getElementById("desktopNotifications").checked = desktopNotifications;
-			document.getElementById("favouriteRepos").value = settings.favouriteRepos.join(", ");
+			document.getElementById("favoriteRepos").value = settings.favoriteRepos.join(", ");
 
 			// Settings save handler
 			function save() {
 				const data = {
 					githubToken: document.getElementById("githubToken").value,
 					updateFrequency: document.getElementById("updateFrequency").value,
-					favouriteRepos: [ ...new Set(
-						document.getElementById("favouriteRepos").value
+					favoriteRepos: [ ...new Set(
+						document.getElementById("favoriteRepos").value
 							.replace(/;/g, ",").split(",").map((repo) => repo.trim())
 					)],
 					// desktopNotifications: document.getElementById("desktopNotifications").checked

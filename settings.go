@@ -19,7 +19,7 @@ import (
 type settings struct {
 	GithubToken     string   `json:"githubToken"`
 	UpdateFrequency string   `json:"updateFrequency"`
-	FavouriteRepos  []string `json:"favouriteRepos"`
+	FavoriteRepos   []string `json:"favoriteRepos"`
 	// DesktopNotifications bool   `json:"desktopNotifications"`
 }
 
@@ -125,7 +125,7 @@ func getSettings() (settings, error) {
 	var defaults = settings{
 		GithubToken:     "",
 		UpdateFrequency: "30s",
-		FavouriteRepos:  make([]string, 0),
+		FavoriteRepos:   make([]string, 0),
 	}
 
 	var cnfg settings
@@ -142,8 +142,8 @@ func getSettings() (settings, error) {
 
 	cnfg.GithubToken, _ = cpass.Cpass("").Decode(cnfg.GithubToken)
 
-	if cnfg.FavouriteRepos == nil {
-		cnfg.FavouriteRepos = make([]string, 0)
+	if cnfg.FavoriteRepos == nil {
+		cnfg.FavoriteRepos = make([]string, 0)
 	}
 
 	return cnfg, nil

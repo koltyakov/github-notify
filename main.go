@@ -119,7 +119,7 @@ func run(timeout time.Duration, cnfg *settings) time.Duration {
 			for _, n := range notifications {
 				reposEvents[*n.Repository.FullName] = reposEvents[*n.Repository.FullName] + 1
 			}
-			onNotification(len(notifications), reposEvents, cnfg.FavouriteRepos)
+			onNotification(len(notifications), reposEvents, cnfg.FavoriteRepos)
 		}
 
 		// Timeout duration from settings
