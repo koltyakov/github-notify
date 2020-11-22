@@ -29,6 +29,13 @@ func main() {
 	grace := make(chan os.Signal, 1)
 	signal.Notify(grace, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
+	// Lock session to prevent multiple simultaneous application instances
+	if err := lockSession(); err != nil {
+		fmt.Printf("error: %s\n", err)
+		return
+	}
+	defer unlockSession()
+
 	// Systray exit handler
 	onExit := func() {
 		appCtxCancel()
