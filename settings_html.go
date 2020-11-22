@@ -101,20 +101,20 @@ var settingsHTMLTmpl = `
 			};
 
 			// Center dialog window
-			// const centerDialogWindow = () => {
-			// 	let left = (screen.availWidth - window.outerWidth)/2;
-			// 	let top = (screen.availHeight - window.innerHeight)/2;
-			// 	if (window["formSize"]) {
-			// 		left = (screen.availWidth - window["formSize"]["width"])/2;
-			// 		top = (screen.availHeight - window["formSize"]["height"])/2;
-			// 	}
-			// 	window.moveTo(left, top);
-			// };
+			const centerDialogWindow = () => {
+				let left = (screen.availWidth - window.outerWidth)/2;
+				let top = (screen.availHeight - window.outerHeight)/2;
+				if (window["formSize"]) {
+					left = (screen.availWidth - window["formSize"]["width"])/2;
+					top = (screen.availHeight - window["formSize"]["height"])/2;
+				}
+				window.moveTo(left, top);
+			};
 
 			// Window configuration
-			window.addEventListener("contextmenu", function(e) { e.preventDefault(); });
+			// window.addEventListener("contextmenu", function(e) { e.preventDefault(); });
 			fitWindowToFormSize();
-			// centerDialogWindow();
+			centerDialogWindow();
 
 		</script>
 	</body>

@@ -48,12 +48,9 @@ func openInChrome(ctx context.Context) (settings, bool, error) {
 	isUpdated := false
 
 	// Settings dialog window size
-	dlg := &struct {
-		w int
-		h int
-	}{
-		w: 540,
-		h: 380,
+	dlg := &dimension{
+		Width:  540,
+		Heigth: 501,
 	}
 
 	// Get saved or default settings
@@ -64,16 +61,18 @@ func openInChrome(ctx context.Context) (settings, bool, error) {
 
 	// Chrome Launch Switches arguments https://sites.google.com/site/chromeappupdates/launch-switches
 	var args []string
+	// args = append(args, "--headless")
 
-	// Require a cross platform screen size detection
-	// args = append(args, fmt.Sprintf(
-	// 	"--window-position=%d,%d",
-	// 	(int(screenWidth)-dlg.w)/2,
-	// 	(int(screenHeight)-dlg.h)/2,
-	// ))
+	if srcn, err := getScreenSize(); err == nil {
+		args = append(args, fmt.Sprintf(
+			"--window-position=%d,%d",
+			(int(srcn.Width)-dlg.Width)/2,
+			(int(srcn.Heigth)-dlg.Heigth)/2,
+		))
+	}
 
 	// Init Lorca window using embed HTML
-	ui, err := lorca.New("data:text/html,"+url.PathEscape(settingsHTMLTmpl), "", dlg.w, dlg.h, args...)
+	ui, err := lorca.New("data:text/html,"+url.PathEscape(settingsHTMLTmpl), "", dlg.Width, dlg.Heigth, args...)
 	if err != nil {
 		// Can't open Chrome, likely is not installed
 		return cnfg, false, err
