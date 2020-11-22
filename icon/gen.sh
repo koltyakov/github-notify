@@ -35,13 +35,16 @@ generate_icon() {
   fi
 }
 
-generate_icon "./assets/icon_unix.png" icon_unix.go baseIcon unix
-generate_icon "./assets/icon_win.ico" icon_win.go baseIcon win
+generate_icon "./assets/base.png" icon_base.go baseIcon unix
+generate_icon "./assets/base.ico" icon_base_win.go baseIcon win
 
-generate_icon "./assets/icon_error_unix.png" icon_error_unix.go errIcon unix
-generate_icon "./assets/icon_error_win.ico" icon_error_win.go errIcon win
+generate_icon "./assets/error.png" icon_error.go errIcon unix
+generate_icon "./assets/error.ico" icon_error_win.go errIcon win
 
-generate_icon "./assets/icon_noti_unix.png" icon_noti_unix.go notiIcon unix
-generate_icon "./assets/icon_noti_win.ico" icon_noti_win.go notiIcon win
+generate_icon "./assets/noti.png" icon_noti.go notiIcon unix
+generate_icon "./assets/noti.ico" icon_noti_win.go notiIcon win
+
+generate_icon "./assets/warm.png" icon_warn.go warnIcon unix
+generate_icon "./assets/warn.ico" icon_warn_win.go warnIcon win
 
 echo Finished
