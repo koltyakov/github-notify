@@ -65,6 +65,10 @@ release:
 	goreleaser --rm-dist --skip-publish
 	cd dist && ls *.dmg | xargs shasum -a256 >> $$(ls *_checksums.txt)
 
+lint-cyclo:
+	which gocyclo || go get github.com/fzipp/gocyclo/cmd/gocyclo
+	gocyclo ./  
+
 start: run # alias for run
 run:
 	pkill github-notify || true

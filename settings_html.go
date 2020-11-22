@@ -1,6 +1,7 @@
 package main
 
 // ToDo: Store source in HTML and code gen the variable
+// Checkout https://github.com/markbates/pkger
 var settingsHTMLTmpl = `
 <html>
 	<head>
@@ -56,7 +57,6 @@ var settingsHTMLTmpl = `
 			</div>
 		</div>
 		<script type="text/javascript">
-
 			// Restore default values
 			Object.keys(settings).forEach((key) => {
 				const el = document.getElementById(key);
@@ -115,7 +115,6 @@ var settingsHTMLTmpl = `
 			// window.addEventListener("contextmenu", function(e) { e.preventDefault(); });
 			fitWindowToFormSize();
 			centerDialogWindow();
-
 		</script>
 	</body>
 </html>
