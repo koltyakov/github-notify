@@ -35,6 +35,9 @@ func getNotifications(accessToken string) ([]*github.Notification, error) {
 
 // onNotification system tray menu on notifications change event handler
 func onNotification(num int, repos map[string]int, cnfg *settings) {
+	// https://unicode.org/emoji/charts/full-emoji-list.html
+	// some statuses text can be inplemented with using unicode emoji
+
 	// Notification in favoutite repos
 	favNum := favReposEvents(repos, cnfg)
 
@@ -45,26 +48,26 @@ func onNotification(num int, repos map[string]int, cnfg *settings) {
 
 	// No unread items
 	if num == 0 {
-		setTitle("0")
-		setIcon(icon.Base)
-		setTooltip("No unread notifications")
+		tray.SetTitle("0")
+		tray.SetIcon(icon.Base)
+		tray.SetTooltip("No unread notifications")
 		return
 	}
 
 	// Notifications icon
 	if favNum > 0 {
-		setIcon(icon.Warn)
+		tray.SetIcon(icon.Warn)
 	} else {
-		setIcon(icon.Noti)
+		tray.SetIcon(icon.Noti)
 	}
 
 	// Notifications title
 	title := getNotificationsTitle(num, favNum, repos, cnfg)
-	setTitle(title)
+	tray.SetTitle(title)
 
 	// Notifications tooltip
 	tooltip := getNotificationsTooltip(num, favNum, repos, cnfg)
-	setTooltip(tooltip)
+	tray.SetTooltip(tooltip)
 
 	// Show counter in menu for Linux
 	if runtime.GOOS == "linux" {
@@ -121,13 +124,15 @@ func getNotificationsTitle(num int, favNum int, repos map[string]int, cnfg *sett
 	if favNum > 0 {
 		if favNum == num {
 			// All notifications are in favorite repos
-			title = fmt.Sprintf("%d!", favNum)
+			title = fmt.Sprintf("[%d]", favNum)
 		} else {
-			title = fmt.Sprintf("%d!/%d", favNum, num)
+			title = fmt.Sprintf("[%d]/%d", favNum, num)
 		}
 	}
 	// Additional counter for the number of repositories
 	if len(repos) > 1 && num != len(repos) {
+		title = fmt.Sprintf("%s/%d", title, len(repos))
+	} else if favNum > 0 {
 		title = fmt.Sprintf("%s/%d", title, len(repos))
 	}
 	return title

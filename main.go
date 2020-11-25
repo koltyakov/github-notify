@@ -22,6 +22,7 @@ var (
 var appConf = &settings{}
 var menu = map[string]*systray.MenuItem{}
 var appCtx, appCtxCancel = context.WithCancel(context.Background())
+var tray = &Tray{} // Tray state cache
 
 // Init systray applications
 func main() {
@@ -53,8 +54,8 @@ func main() {
 
 // onReady bootstraps system tray menu logic
 func onReady() {
-	setIcon(icon.Base)
-	setTitle("Loading...")
+	tray.SetIcon(icon.Base)
+	tray.SetTitle("Loading...")
 
 	// Get app settings
 	c, err := getSettings()
@@ -171,17 +172,17 @@ func openSettingsHandler() {
 // onError system tray menu on error event handler
 func onError(err error) {
 	fmt.Printf("error: %s\n", err)
-	setTitle("Error")
-	setTooltip(fmt.Sprintf("Error: %s", err))
-	setIcon(icon.Err)
+	tray.SetTitle("Error")
+	tray.SetTooltip(fmt.Sprintf("Error: %s", err))
+	tray.SetIcon(icon.Err)
 }
 
 // onEmptyToken system tray menu on empty token event handler
 func onEmptyToken() {
 	menu["getToken"].Show()
-	setTitle("No Token")
-	setTooltip("Error: no access token has been provided")
-	setIcon(icon.Err)
+	tray.SetTitle("No Token")
+	tray.SetTooltip("Error: no access token has been provided")
+	tray.SetIcon(icon.Err)
 }
 
 // onNotificationModeChange notification mode (all, favorite) change handler
