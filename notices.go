@@ -1,37 +1,16 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"runtime"
 	"sort"
 	"strings"
 
-	"github.com/google/go-github/v32/github"
 	"github.com/koltyakov/github-notify/icon"
-	"golang.org/x/oauth2"
 )
 
-// getNotifications checks personal unread GitHub notifications
-func getNotifications(accessToken string) ([]*github.Notification, error) {
-	ctx := context.Background()
-
-	client := github.NewClient(
-		oauth2.NewClient(ctx, oauth2.StaticTokenSource(
-			&oauth2.Token{
-				AccessToken: accessToken,
-			},
-		)),
-	)
-
-	notifications, _, err := client.Activity.ListNotifications(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return notifications, nil
-}
+/* Notifications events and handlers */
 
 // onNotification system tray menu on notifications change event handler
 func onNotification(num int, repos map[string]int, cnfg *settings) {
@@ -58,7 +37,7 @@ func onNotification(num int, repos map[string]int, cnfg *settings) {
 	if favNum > 0 {
 		tray.SetIcon(icon.Warn)
 	} else {
-		tray.SetIcon(icon.Noti)
+		tray.SetIcon(icon.Notice)
 	}
 
 	// Notifications title

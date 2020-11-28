@@ -23,6 +23,7 @@ var appConf = &settings{}
 var menu = map[string]*systray.MenuItem{}
 var appCtx, appCtxCancel = context.WithCancel(context.Background())
 var tray = &Tray{} // Tray state cache
+var ghClient *GitHubClient
 
 // Init systray applications
 func main() {
@@ -63,6 +64,9 @@ func onReady() {
 		onError(err)
 	}
 	appConf = &c
+
+	// Initiate GitHub client
+	ghClient = NewGitHubClient(context.Background(), appConf.GithubToken)
 
 	// Menu items
 	menu["notifications"] = systray.AddMenuItem("Notifications", "Open notifications on GitHub")
@@ -122,7 +126,7 @@ func run(timeout time.Duration, cnfg *settings) time.Duration {
 	// Get notification only when having access token
 	if cnfg.GithubToken != "" {
 		// Request GitHub API
-		notifications, err := getNotifications(cnfg.GithubToken)
+		notifications, err := ghClient.GetNotifications()
 		if err != nil {
 			if onError(err); strings.Contains(err.Error(), "401 Bad credentials") {
 				menu["getToken"].Show()
@@ -159,6 +163,7 @@ func openSettingsHandler() {
 		menu["settings"].Enable()
 		if upd && err == nil {
 			appConf = &newCnfg
+			ghClient.SetToken(appConf.GithubToken)
 			menu["getToken"].Hide()
 			if appConf.GithubToken == "" {
 				onEmptyToken()
