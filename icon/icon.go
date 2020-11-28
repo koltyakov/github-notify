@@ -18,10 +18,10 @@ var Err = &Icon{
 	Name: "error",
 }
 
-// Noti bytes array icon representation
-var Noti = &Icon{
-	Data: notiIcon,
-	Name: "notification",
+// Notice bytes array icon representation
+var Notice = &Icon{
+	Data: noticeIcon,
+	Name: "notice",
 }
 
 // Warn bytes array icon representation

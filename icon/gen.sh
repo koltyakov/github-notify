@@ -41,8 +41,8 @@ generate_icon "./assets/base.ico" icon_base_win.go baseIcon win
 generate_icon "./assets/error.png" icon_error.go errIcon unix
 generate_icon "./assets/error.ico" icon_error_win.go errIcon win
 
-generate_icon "./assets/noti.png" icon_noti.go notiIcon unix
-generate_icon "./assets/noti.ico" icon_noti_win.go notiIcon win
+generate_icon "./assets/notice.png" icon_notice.go noticeIcon unix
+generate_icon "./assets/notice.ico" icon_notice_win.go noticeIcon win
 
 generate_icon "./assets/warn.png" icon_warn.go warnIcon unix
 generate_icon "./assets/warn.ico" icon_warn_win.go warnIcon win
