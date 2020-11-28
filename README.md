@@ -16,7 +16,7 @@
 
 - I'm a maintainer or active watcher of some repositories at GitHub
 - I want to react to issues quickly
-- I prefer a status based humble info rather than agressive email or pop-ups
+- I prefer a status based humble info rather than aggressive email or pop-ups
 
 ## Demo
 
@@ -56,7 +56,7 @@ The project uses these major dependencies and inherits their prerequisites:
 - [systray](https://github.com/getlantern/systray)
 - [Lorca](https://github.com/zserge/lorca)
 
-Due to the nature of `systray` package, the build for macOS can be done in a Mac, a linux build only on a Linux machine. Platform specific prerequisites are required.
+Due to the nature of `systray` package, the build for macOS can be done in a Mac, a linux build only on a Linux machine. Platform specific prerequisites required.
 
 Windows cross build can be done from any platform.
 

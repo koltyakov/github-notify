@@ -7,14 +7,14 @@ import (
 // dimension struct for defining height and width
 type dimension struct {
 	Width  int
-	Heigth int
+	Height int
 }
 
 var screenSize = dimension{}
 
 // getScreenSize gets screen width and height
 func getScreenSize() (dimension, error) {
-	if screenSize.Width != 0 && screenSize.Heigth != 0 {
+	if screenSize.Width != 0 && screenSize.Height != 0 {
 		return screenSize, nil
 	}
 
@@ -28,7 +28,7 @@ func getScreenSize() (dimension, error) {
 	defer func() { _ = ui.Close() }()
 
 	screenSize.Width = ui.Eval("screen.availWidth").Int()
-	screenSize.Heigth = ui.Eval("screen.availHeight").Int()
+	screenSize.Height = ui.Eval("screen.availHeight").Int()
 
 	return screenSize, nil
 }

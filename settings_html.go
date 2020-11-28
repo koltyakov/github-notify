@@ -46,7 +46,7 @@ var settingsHTMLTmpl = `
 					</label>
 				</div>
 				<div class="mb-3">
-					<label for="favoriteRepos" class="form-label">Favorite repositiries</label>
+					<label for="favoriteRepos" class="form-label">Favorite repositories</label>
 					<textarea class="form-control" id="favoriteRepos" rows="2"></textarea>
 					<div class="form-text">Comma-separated list of repositories.</div>
 				</div>

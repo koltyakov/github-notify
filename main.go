@@ -245,7 +245,7 @@ func onMarkAsRead(repo string) {
 func checkNotificationMode(mode string) {
 	for mKey, mItem := range menu {
 		if strings.Index(mKey, "filter:") != -1 {
-			if mKey == "filter:"+appConf.FiltersMode {
+			if mKey == "filter:"+mode {
 				mItem.Check()
 				continue
 			}

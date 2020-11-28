@@ -13,9 +13,9 @@ import (
 // onNotification system tray menu on notifications change event handler
 func onNotification(num int, repos map[string]int, cnfg *settings) {
 	// https://unicode.org/emoji/charts/full-emoji-list.html
-	// some statuses text can be inplemented with using unicode emoji
+	// some statuses text can be implemented with using unicode emoji
 
-	// Notification in favoutite repos
+	// Notification in favorite repos
 	favNum := favReposEvents(repos, cnfg)
 
 	// Filter mode
@@ -72,8 +72,8 @@ func favReposEvents(repos map[string]int, cnfg *settings) int {
 	return favNum
 }
 
-// favRepoNotifications gets events notifications in favorite repositories
-func favReposNoti(repos map[string]int, cnfg *settings) map[string]int {
+// favReposNotifications gets events notifications in favorite repositories
+func favReposNotifications(repos map[string]int, cnfg *settings) map[string]int {
 	favRepos := map[string]int{}
 	for repoName, eventsCnt := range repos {
 		isFavorite := false
@@ -95,7 +95,7 @@ func getNotificationsTitle(num int, favNum int, repos map[string]int, cnfg *sett
 	if cnfg.FiltersMode == "favorite" {
 		num = favNum
 		favNum = 0
-		repos = favReposNoti(repos, cnfg)
+		repos = favReposNotifications(repos, cnfg)
 	}
 
 	// Default overall notifications counter
@@ -124,7 +124,7 @@ func getNotificationsTooltip(num int, favNum int, repos map[string]int, cnfg *se
 	if cnfg.FiltersMode == "favorite" {
 		num = favNum
 		favNum = 0
-		repos = favReposNoti(repos, cnfg)
+		repos = favReposNotifications(repos, cnfg)
 	}
 
 	// Windows doesn't support long tooltip messages

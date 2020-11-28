@@ -18,21 +18,21 @@ import (
 // settings structure
 type settings struct {
 	GithubToken     string   `json:"githubToken"`
-	UpdateFrequency string   `json:"updateFrequency"` // posible values: "10s", "30s", ...
+	UpdateFrequency string   `json:"updateFrequency"` // possible values: "10s", "30s", ...
 	FavoriteRepos   []string `json:"favoriteRepos"`
-	FiltersMode     string   `json:"filtersMode"` // posible values: "all", "favorite"
+	FiltersMode     string   `json:"filtersMode"` // possible values: "all", "favorite"
 	// DesktopNotifications bool   `json:"desktopNotifications"`
 }
 
 // openSettings opens Chrome window using Lorca, Chrome is required in the system
-// returns new or egsisting settings and a sign if the setting were updated
+// returns new or existing settings and a sign if the setting were updated
 func openSettings(ctx context.Context) (settings, bool, error) {
 	cnfg, upd, err := openInChrome(ctx)
 	if err != nil {
 		// Check only an error with no Chrome found
 		if strings.Index(err.Error(), "fork/exec : no such file or directory") != -1 {
 			// Workaround opening settings file for manual edit
-			err = openInEditor(ctx)
+			err = openInEditor()
 		}
 	}
 	return cnfg, upd, err
@@ -40,7 +40,7 @@ func openSettings(ctx context.Context) (settings, bool, error) {
 
 // openInEditor opens settings file in default text editor
 // for the cases, no Chrome is installed in the system
-func openInEditor(ctx context.Context) error {
+func openInEditor() error {
 	return open.Run(getConfigPath())
 }
 
@@ -51,7 +51,7 @@ func openInChrome(ctx context.Context) (settings, bool, error) {
 	// Settings dialog window size
 	dlg := &dimension{
 		Width:  540,
-		Heigth: 501,
+		Height: 501,
 	}
 
 	// Get saved or default settings
@@ -64,16 +64,16 @@ func openInChrome(ctx context.Context) (settings, bool, error) {
 	var args []string
 	// args = append(args, "--headless")
 
-	if srcn, err := getScreenSize(); err == nil && srcn.Heigth != 0 && srcn.Width != 0 {
+	if screen, err := getScreenSize(); err == nil && screen.Height != 0 && screen.Width != 0 {
 		args = append(args, fmt.Sprintf(
 			"--window-position=%d,%d",
-			(int(srcn.Width)-dlg.Width)/2,
-			(int(srcn.Heigth)-dlg.Heigth)/2,
+			(screen.Width-dlg.Width)/2,
+			(screen.Height-dlg.Height)/2,
 		))
 	}
 
 	// Init Lorca window using embed HTML
-	ui, err := lorca.New("data:text/html,"+url.PathEscape(settingsHTMLTmpl), "", dlg.Width, dlg.Heigth, args...)
+	ui, err := lorca.New("data:text/html,"+url.PathEscape(settingsHTMLTmpl), "", dlg.Width, dlg.Height, args...)
 	if err != nil {
 		// Can't open Chrome, likely is not installed
 		return cnfg, false, err
