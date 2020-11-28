@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -24,6 +25,7 @@ var menu = map[string]*systray.MenuItem{}
 var appCtx, appCtxCancel = context.WithCancel(context.Background())
 var tray = &Tray{} // Tray state cache
 var ghClient *GitHubClient
+var repoEvents map[string]int
 
 // Init systray applications
 func main() {
@@ -70,6 +72,7 @@ func onReady() {
 
 	// Menu items
 	menu["notifications"] = systray.AddMenuItem("Notifications", "Open notifications on GitHub")
+	menu["markAsRead"] = systray.AddMenuItem("Mark as read", "Marks current notifications as read")
 	menu["filter"] = systray.AddMenuItem("Filter mode", "") // "Notifications filter mode switch")
 	menu["filter:all"] = menu["filter"].AddSubMenuItem("All notifications", "Show all notifications")
 	menu["filter:favorite"] = menu["filter"].AddSubMenuItem("Favorite repos", "Show notification only from favorite repositories")
@@ -79,6 +82,10 @@ func onReady() {
 	menu["about"] = systray.AddMenuItem("About", "About GitHub Notify")
 	menu["quit"] = systray.AddMenuItem("Quit", "Quit GitHub Notify")
 
+	// Default states for menu items
+	menu["markAsRead"].Disable()
+	menu["getToken"].Hide()
+
 	// Notification filters
 	checkNotificationMode(appConf.FiltersMode)
 
@@ -86,7 +93,6 @@ func onReady() {
 	go menuActions()
 
 	// Show get token item only when no token is provided
-	menu["getToken"].Hide()
 	if appConf.GithubToken == "" {
 		onEmptyToken()
 	}
@@ -104,6 +110,8 @@ func menuActions() {
 		select {
 		case <-menu["notifications"].ClickedCh:
 			onOpenLinkHandler("https://github.com/notifications?query=is%3Aunread")
+		case <-menu["markAsRead"].ClickedCh:
+			onMarkAsRead("")
 		case <-menu["filter:all"].ClickedCh:
 			onNotificationModeChange("all")
 		case <-menu["filter:favorite"].ClickedCh:
@@ -134,11 +142,12 @@ func run(timeout time.Duration, cnfg *settings) time.Duration {
 				return 0 // continue
 			}
 		} else {
-			reposEvents := map[string]int{}
+			re := map[string]int{}
 			for _, n := range notifications {
-				reposEvents[*n.Repository.FullName] = reposEvents[*n.Repository.FullName] + 1
+				re[*n.Repository.FullName] = re[*n.Repository.FullName] + 1
 			}
-			onNotification(len(notifications), reposEvents, cnfg)
+			repoEvents = re
+			onNotification(len(notifications), re, cnfg)
 		}
 
 		// Timeout duration from settings
@@ -199,6 +208,35 @@ func onNotificationModeChange(mode string) {
 	}
 	appConf = &c
 	checkNotificationMode(mode)
+	go func() { _ = run(0, appConf) }()
+}
+
+// onMarkAsRead mark notifications as read handler
+func onMarkAsRead(repo string) {
+	if repo == "" {
+		// Mark all repositories as read when a specific repo is not provided
+		for rn := range repoEvents {
+			markAsRead := true
+			if appConf.FiltersMode == "favorite" {
+				markAsRead = false
+				for _, fr := range appConf.FavoriteRepos {
+					if matched, _ := regexp.MatchString(fr, rn); matched {
+						markAsRead = true
+					}
+				}
+			}
+			if markAsRead {
+				if err := ghClient.MarkRepositoryNotificationsRead(rn); err != nil {
+					fmt.Printf("error: %s\n", err)
+				}
+			}
+		}
+	} else {
+		// Mark a specific repository events as read
+		if err := ghClient.MarkRepositoryNotificationsRead(repo); err != nil {
+			fmt.Printf("error: %s\n", err)
+		}
+	}
 	go func() { _ = run(0, appConf) }()
 }
 

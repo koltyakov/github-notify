@@ -10,8 +10,6 @@ import (
 	"github.com/koltyakov/github-notify/icon"
 )
 
-/* Notifications events and handlers */
-
 // onNotification system tray menu on notifications change event handler
 func onNotification(num int, repos map[string]int, cnfg *settings) {
 	// https://unicode.org/emoji/charts/full-emoji-list.html
@@ -30,8 +28,11 @@ func onNotification(num int, repos map[string]int, cnfg *settings) {
 		tray.SetTitle("0")
 		tray.SetIcon(icon.Base)
 		tray.SetTooltip("No unread notifications")
+		menu["markAsRead"].Disable()
 		return
 	}
+
+	menu["markAsRead"].Enable()
 
 	// Notifications icon
 	if favNum > 0 {
