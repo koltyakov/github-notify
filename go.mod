@@ -10,6 +10,7 @@ require (
 	github.com/getlantern/golog v0.0.0-20201105130739-9586b8bde3a9 // indirect
 	github.com/getlantern/ops v0.0.0-20200403153110-8476b16edcd6 // indirect
 	github.com/getlantern/systray v1.1.0
+	github.com/go-ole/go-ole v1.2.4
 	github.com/golang/protobuf v1.4.3 // indirect
 	github.com/google/go-github/v32 v32.1.0
 	github.com/kirsle/configdir v0.0.0-20170128060238-e45d2f54772f

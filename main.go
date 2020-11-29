@@ -25,7 +25,7 @@ var (
 	menu                 = map[string]*systray.MenuItem{}
 	appCtx, appCtxCancel = context.WithCancel(context.Background())
 	tray                 = &Tray{} // Tray state cache
-	autoStart            = &AutoStart{}
+	autoStart            = &Autostart{}
 	ghClient             *GitHubClient
 	repoEvents           map[string]int
 )
