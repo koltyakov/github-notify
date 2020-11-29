@@ -61,71 +61,69 @@ var settingsHTMLTmpl = `
 			</div>
 		</div>
 		<script type="text/javascript">
-			window.addEventListener('DOMContentLoaded', (event) => {
 
-				// Bind settings
-				const settings = currentSettings;
+			// Bind settings
+			const settings = currentSettings;
 
-				// Restore default values
-				Object.keys(settings).forEach((key) => {
-					const el = document.getElementById(key);
-					if (el && typeof settings[key] === "string") {
-						try {
-							el.value = settings[key] || '';
-						} catch {}
-					}
-				});
-				document.getElementById("favoriteRepos").value = settings.favoriteRepos.join(", ");
-				document.getElementById("autoStart").checked = typeof settings.autoStart !== "undefined" ? settings.autoStart : false;
-
-				// Settings save handler
-				function save() {
-					const data = {
-						...settings,
-						githubToken: document.getElementById("githubToken").value,
-						updateFrequency: document.getElementById("updateFrequency").value,
-						favoriteRepos: [ ...new Set(
-							document.getElementById("favoriteRepos").value
-								.replace(/;/g, ",").split(",").map((repo) => repo.trim())
-						)],
-						autoStart: document.getElementById("autoStart").checked
-					};
-					saveSettings(JSON.stringify(data));
+			// Restore default values
+			Object.keys(settings).forEach((key) => {
+				const el = document.getElementById(key);
+				if (el && typeof settings[key] === "string") {
+					try {
+						el.value = settings[key] || '';
+					} catch {}
 				}
-
-				// Adapt window size handler
-				const fitWindowToFormSize = () => {
-					if (!window["formSize"]) {
-						const form = document.querySelector(".settings-form");
-						if (form) {
-							window["formSize"] = {
-								width: form.clientWidth,
-								height: form.clientHeight + (window.outerHeight - window.innerHeight)
-							};
-						}
-					}
-					if (window["formSize"]) {
-						const { width, height } = window["formSize"];
-						window.resizeTo(width, height);
-					}
-				};
-
-				// Center dialog window
-				const centerDialogWindow = () => {
-					let left = (screen.availWidth - window.outerWidth)/2;
-					let top = (screen.availHeight - window.outerHeight)/2;
-					if (window["formSize"]) {
-						left = (screen.availWidth - window["formSize"]["width"])/2;
-						top = (screen.availHeight - window["formSize"]["height"])/2;
-					}
-					window.moveTo(left, top);
-				};
-
-				// Window configuration
-				fitWindowToFormSize();
-				centerDialogWindow();
-
 			});
+			document.getElementById("favoriteRepos").value = settings.favoriteRepos.join(", ");
+			document.getElementById("autoStart").checked = typeof settings.autoStart !== "undefined" ? settings.autoStart : false;
+
+			// Settings save handler
+			function save() {
+				const data = {
+					...settings,
+					githubToken: document.getElementById("githubToken").value,
+					updateFrequency: document.getElementById("updateFrequency").value,
+					favoriteRepos: [ ...new Set(
+						document.getElementById("favoriteRepos").value
+							.replace(/;/g, ",").split(",").map((repo) => repo.trim())
+					)],
+					autoStart: document.getElementById("autoStart").checked
+				};
+				saveSettings(JSON.stringify(data));
+			};
+
+			// Adapt window size handler
+			const fitWindowToFormSize = () => {
+				if (!window["formSize"]) {
+					const form = document.querySelector(".settings-form");
+					if (form) {
+						window["formSize"] = {
+							width: form.clientWidth,
+							height: form.clientHeight + (window.outerHeight - window.innerHeight)
+						};
+					}
+				}
+				if (window["formSize"]) {
+					const { width, height } = window["formSize"];
+					window.resizeTo(width, height);
+				}
+			};
+
+			// Center dialog window
+			const centerDialogWindow = () => {
+				let left = (screen.availWidth - window.outerWidth)/2;
+				let top = (screen.availHeight - window.outerHeight)/2;
+				if (window["formSize"]) {
+					left = (screen.availWidth - window["formSize"]["width"])/2;
+					top = (screen.availHeight - window["formSize"]["height"])/2;
+				}
+				window.moveTo(left, top);
+			};
+
+			// Window configuration
+			fitWindowToFormSize();
+			centerDialogWindow();
+
 		</script>
 	</body>
 </html>
