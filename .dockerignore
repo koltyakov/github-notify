@@ -1,10 +1,10 @@
-# Ignore everything
-**
+bin/
+dist/
+.vscode/
+.idea/
+assets/
 
-# Allow files and directories
-!/*.go
-# !/**/*.go didn't work
-!/icon/*.go
+# Allow files
 !/Makefile
 !/.goreleaser.yml
 !/go.mod
