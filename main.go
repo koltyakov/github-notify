@@ -20,12 +20,15 @@ var (
 	version string
 )
 
-var appConf = &settings{}
-var menu = map[string]*systray.MenuItem{}
-var appCtx, appCtxCancel = context.WithCancel(context.Background())
-var tray = &Tray{} // Tray state cache
-var ghClient *GitHubClient
-var repoEvents map[string]int
+var (
+	appConf              = &settings{}
+	menu                 = map[string]*systray.MenuItem{}
+	appCtx, appCtxCancel = context.WithCancel(context.Background())
+	tray                 = &Tray{} // Tray state cache
+	autoStart            = &AutoStart{}
+	ghClient             *GitHubClient
+	repoEvents           map[string]int
+)
 
 // Init systray applications
 func main() {
@@ -69,6 +72,11 @@ func onReady() {
 
 	// Initiate GitHub client
 	ghClient = NewGitHubClient(context.Background(), appConf.GithubToken)
+
+	// Check autostart settings
+	if err := autoStart.Configure(appConf.AutoStart); err != nil {
+		fmt.Println(err)
+	}
 
 	// Menu items
 	menu["notifications"] = systray.AddMenuItem("Notifications", "Open notifications on GitHub")
@@ -176,6 +184,10 @@ func openSettingsHandler() {
 			menu["getToken"].Hide()
 			if appConf.GithubToken == "" {
 				onEmptyToken()
+			}
+			// Configure autostart settings
+			if err := autoStart.Configure(appConf.AutoStart); err != nil {
+				fmt.Println(err)
 			}
 			// check updates immediately after settings change
 			go func() { _ = run(0, appConf) }()

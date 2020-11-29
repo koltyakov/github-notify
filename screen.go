@@ -10,7 +10,13 @@ type dimension struct {
 	Height int
 }
 
+// screenSize cache
 var screenSize = dimension{}
+
+// Prepopulate screen size on init
+func init() {
+	screenSize, _ = getScreenSize()
+}
 
 // getScreenSize gets screen width and height
 func getScreenSize() (dimension, error) {

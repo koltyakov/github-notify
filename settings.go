@@ -21,6 +21,8 @@ type settings struct {
 	UpdateFrequency string   `json:"updateFrequency"` // possible values: "10s", "30s", ...
 	FavoriteRepos   []string `json:"favoriteRepos"`
 	FiltersMode     string   `json:"filtersMode"` // possible values: "all", "favorite"
+	AutoStart       bool     `json:"autoStart"`
+
 	// DesktopNotifications bool   `json:"desktopNotifications"`
 }
 
@@ -51,7 +53,7 @@ func openInChrome(ctx context.Context) (settings, bool, error) {
 	// Settings dialog window size
 	dlg := &dimension{
 		Width:  540,
-		Height: 501,
+		Height: 541,
 	}
 
 	// Get saved or default settings
@@ -134,6 +136,7 @@ func getSettings() (settings, error) {
 		UpdateFrequency: "30s",
 		FavoriteRepos:   make([]string, 0),
 		FiltersMode:     "all",
+		AutoStart:       false,
 	}
 
 	var cnfg settings
@@ -157,6 +160,10 @@ func getSettings() (settings, error) {
 	if cnfg.FiltersMode == "" {
 		cnfg.FiltersMode = "all"
 	}
+
+	// if autoStart != nil {
+	// 	cnfg.AutoStart = autoStart.IsEnabled()
+	// }
 
 	return cnfg, nil
 }
