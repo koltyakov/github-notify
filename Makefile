@@ -1,10 +1,14 @@
-version := 0.0.0-SNAPSHOT # `make version=0.1.0 tag`
+# `make version=0.1.0 tag`
+version := 0.0.0-SNAPSHOT
 author  := Andrew Koltyakov
 app     := GitHub Notify
 id      := com.koltyakov.github-notify
 
 install:
 	go get -u ./... && go mod tidy
+	which appify || go get github.com/machinebox/appify
+	which create-dmg || npm i -g create-dmg
+	which goreleaser || curl -sfL https://install.goreleaser.com/github.com/goreleaser/goreleaser.sh | sh
 
 format:
 	gofmt -s -w .
@@ -58,11 +62,13 @@ tag:
 	git push origin --tags
 
 release-snapshot:
-	goreleaser --rm-dist --skip-publish --snapshot
+	curl -sfL https://install.goreleaser.com/github.com/goreleaser/goreleaser.sh | sh
+	./bin/goreleaser --rm-dist --skip-publish --snapshot
 	cd dist && ls *.dmg | xargs shasum -a256 >> $$(ls *_checksums.txt)
 
 release:
-	goreleaser --rm-dist --skip-publish
+	curl -sfL https://install.goreleaser.com/github.com/goreleaser/goreleaser.sh | sh
+	./bin/goreleaser --rm-dist
 	cd dist && ls *.dmg | xargs shasum -a256 >> $$(ls *_checksums.txt)
 
 lint-cyclo:
