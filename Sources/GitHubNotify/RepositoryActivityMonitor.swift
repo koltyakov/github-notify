@@ -18,7 +18,7 @@ final class RepositoryActivityMonitor {
                 var state = try self.store.load()
                 state?.configure(settings)
                 if let state { try self.store.save(state) }
-                guard settings.notifyStars || settings.notifyIssues else {
+                guard settings.notifyStars || settings.notifyIssues || settings.notifyIssueComments else {
                     status("Repository alerts are off")
                     return
                 }
@@ -37,7 +37,8 @@ final class RepositoryActivityMonitor {
                         guard let account else { return }
                         if state?.accountID != account.id { state = RepositoryActivityState(accountID: account.id) }
                         let snapshot = try await self.client.repositoryActivity(
-                            token: token, account: account, issuesSince: state?.issuesCheckedAt, settings: settings
+                            token: token, account: account, issuesSince: state?.issuesCheckedAt,
+                            commentsSince: state?.commentsCheckedAt, settings: settings
                         )
                         try Task.checkCancellation()
                         guard var updated = state else { return }

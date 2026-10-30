@@ -11,10 +11,10 @@ final class RepositoryActivityTests: XCTestCase {
     }
 
     private func snapshot(
-        _ stars: Int = 10, issues: [RepositoryIssue] = [], after seconds: Double = 0
+        _ stars: Int = 10, issues: [RepositoryIssue] = [], comments: [IssueCommentActivity] = [], after seconds: Double = 0
     ) -> RepositoryActivitySnapshot {
         RepositoryActivitySnapshot(
-            account: account, repositories: [repository(stars)], issues: issues,
+            account: account, repositories: [repository(stars)], issues: issues, comments: comments,
             checkedAt: start.addingTimeInterval(seconds), pollInterval: 60
         )
     }
@@ -31,6 +31,19 @@ final class RepositoryActivityTests: XCTestCase {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(RepositoryIssue.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+
+    private func comment(
+        _ id: Int = 200, after seconds: Double = 1, issue: RepositoryIssue? = nil,
+        body: String = "Thanks!\nThis fixes it."
+    ) throws -> IssueCommentActivity {
+        IssueCommentActivity(
+            issue: try issue ?? self.issue(after: -600),
+            comment: RepositoryIssueComment(
+                id: id, body: body, createdAt: start.addingTimeInterval(seconds),
+                user: GitHubAccount(id: 2, login: "contributor")
+            )
+        )
     }
 
     func testFirstCheckIsSilent() throws {
@@ -113,6 +126,7 @@ final class RepositoryActivityTests: XCTestCase {
         var settings = Settings()
         settings.notifyStars = false
         settings.notifyIssues = false
+        settings.notifyIssueComments = false
         state.configure(settings)
         XCTAssertNil(state.issuesCheckedAt)
         XCTAssertTrue(state.alerts(for: snapshot(100, issues: [try issue()], after: 600), settings: Settings()).isEmpty)
@@ -144,5 +158,59 @@ final class RepositoryActivityTests: XCTestCase {
             )
             XCTAssertTrue(state.alerts(for: next, settings: Settings()).isEmpty, name)
         }
+    }
+
+    func testNewCommentsOnExistingIssuesLinkDirectlyToCommentAndDoNotReplay() throws {
+        var state = RepositoryActivityState(accountID: account.id)
+        let oldComment = try comment(199, after: -1)
+        XCTAssertTrue(state.alerts(for: snapshot(comments: [oldComment]), settings: Settings()).isEmpty)
+        let newComment = try comment()
+        let next = snapshot(comments: [oldComment, newComment, newComment], after: 60)
+        let alerts = state.alerts(for: next, settings: Settings())
+        XCTAssertEqual(alerts.count, 1)
+        XCTAssertEqual(alerts.first?.title, "New comment on #100")
+        XCTAssertEqual(alerts.first?.body, "contributor: Thanks! This fixes it.")
+        XCTAssertEqual(alerts.first?.url.absoluteString, "https://github.com/owner/repo/issues/100#issuecomment-200")
+        var restored = try JSONDecoder().decode(RepositoryActivityState.self, from: JSONEncoder().encode(state))
+        XCTAssertTrue(restored.alerts(for: next, settings: Settings()).isEmpty)
+        _ = restored.alerts(for: snapshot(after: 240), settings: Settings())
+        XCTAssertTrue(restored.alerts(for: snapshot(comments: [newComment], after: 600), settings: Settings()).isEmpty)
+    }
+
+    func testCommentsExcludePullRequestsAndOtherOwnersAndBoundPreviews() throws {
+        var state = RepositoryActivityState(accountID: account.id)
+        _ = state.alerts(for: snapshot(), settings: Settings())
+        let comments = try [
+            comment(200, issue: issue(pullRequest: true)),
+            comment(201, issue: issue(repository: "other/repo")),
+            comment(202, body: String(repeating: "x", count: 1000)),
+        ]
+        let alerts = state.alerts(for: snapshot(comments: comments, after: 60), settings: Settings())
+        XCTAssertEqual(alerts.count, 1)
+        XCTAssertEqual(alerts.first?.body.count, "contributor: ".count + 240)
+    }
+
+    func testCommentToggleIsIndependentAndRebaselinesWhenEnabled() throws {
+        var state = RepositoryActivityState(accountID: account.id)
+        var settings = Settings()
+        settings.notifyStars = false
+        settings.notifyIssues = false
+        _ = state.alerts(for: snapshot(), settings: settings)
+        XCTAssertEqual(state.alerts(for: snapshot(comments: [try comment()], after: 60), settings: settings).count, 1)
+        XCTAssertNil(state.issuesCheckedAt)
+        settings.notifyIssueComments = false
+        state.configure(settings)
+        XCTAssertNil(state.commentsCheckedAt)
+        settings.notifyIssueComments = true
+        XCTAssertTrue(state.alerts(for: snapshot(comments: [try comment(201, after: 61)], after: 120), settings: settings).isEmpty)
+        XCTAssertEqual(state.alerts(for: snapshot(comments: [try comment(202, after: 121)], after: 180), settings: settings).count, 1)
+    }
+
+    func testActivityStateFromBeforeCommentSupportMigratesSilently() throws {
+        let json = Data(#"{"accountID":1,"starCounts":{"10":10},"issuesCheckedAt":721692800,"issuesStartedAt":721692800,"seenIssues":{}}"#.utf8)
+        var state = try JSONDecoder().decode(RepositoryActivityState.self, from: json)
+        XCTAssertNil(state.commentsCheckedAt)
+        XCTAssertTrue(state.alerts(for: snapshot(comments: [try comment()], after: 60), settings: Settings()).isEmpty)
+        XCTAssertEqual(state.commentsCheckedAt, start.addingTimeInterval(60))
     }
 }

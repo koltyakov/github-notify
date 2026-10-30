@@ -23,9 +23,10 @@ public struct RepositoryIssue: Decodable, Sendable {
     public let repository: GitHubNotification.Repository
     public let user: GitHubAccount?
     public let isPullRequest: Bool
+    public let comments: Int
 
     private enum CodingKeys: String, CodingKey {
-        case id, number, title, repository, user, createdAt = "created_at", pullRequest = "pull_request"
+        case id, number, title, repository, user, comments, createdAt = "created_at", pullRequest = "pull_request"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -37,15 +38,45 @@ public struct RepositoryIssue: Decodable, Sendable {
         repository = try values.decode(GitHubNotification.Repository.self, forKey: .repository)
         user = try values.decodeIfPresent(GitHubAccount.self, forKey: .user)
         isPullRequest = try values.contains(.pullRequest) && !values.decodeNil(forKey: .pullRequest)
+        comments = try values.decodeIfPresent(Int.self, forKey: .comments) ?? 0
     }
+}
+
+public struct RepositoryIssueComment: Decodable, Sendable {
+    public let id: Int
+    public let body: String?
+    public let createdAt: Date
+    public let user: GitHubAccount?
+
+    enum CodingKeys: String, CodingKey {
+        case id, body, user, createdAt = "created_at"
+    }
+}
+
+public struct IssueCommentActivity: Sendable {
+    public let issue: RepositoryIssue
+    public let comment: RepositoryIssueComment
 }
 
 public struct RepositoryActivitySnapshot: Sendable {
     public let account: GitHubAccount
     public let repositories: [OwnedRepository]
     public let issues: [RepositoryIssue]
+    public let comments: [IssueCommentActivity]
     public let checkedAt: Date
     public let pollInterval: TimeInterval
+
+    public init(
+        account: GitHubAccount, repositories: [OwnedRepository], issues: [RepositoryIssue],
+        comments: [IssueCommentActivity] = [], checkedAt: Date, pollInterval: TimeInterval
+    ) {
+        self.account = account
+        self.repositories = repositories
+        self.issues = issues
+        self.comments = comments
+        self.checkedAt = checkedAt
+        self.pollInterval = pollInterval
+    }
 }
 
 public struct RepositoryToast: Equatable, Sendable {
@@ -64,6 +95,15 @@ public struct RepositoryActivityState: Codable, Sendable {
     public private(set) var issuesCheckedAt: Date?
     private var issuesStartedAt: Date?
     private var seenIssues: [String: Date] = [:]
+    private var commentState: CommentState?
+    public var commentsCheckedAt: Date? { commentState?.checkedAt }
+
+    // Optional so activity files from versions without comment alerts still decode.
+    private struct CommentState: Codable, Sendable {
+        let startedAt: Date
+        var checkedAt: Date
+        var seen: [String: Date] = [:]
+    }
 
     public init(accountID: Int) { self.accountID = accountID }
 
@@ -74,6 +114,7 @@ public struct RepositoryActivityState: Codable, Sendable {
             issuesCheckedAt = nil
             seenIssues = [:]
         }
+        if !settings.notifyIssueComments { commentState = nil }
     }
 
     public mutating func alerts(for snapshot: RepositoryActivitySnapshot, settings: Settings) -> [RepositoryToast] {
@@ -122,6 +163,37 @@ public struct RepositoryActivityState: Codable, Sendable {
             issuesCheckedAt = nil
             seenIssues = [:]
         }
+
+        if settings.notifyIssueComments {
+            if var state = commentState {
+                for activity in snapshot.comments.sorted(by: { $0.comment.id < $1.comment.id }) {
+                    let issue = activity.issue
+                    let comment = activity.comment
+                    let name = issue.repository.fullName
+                    guard !issue.isPullRequest, issue.number > 0, comment.id > 0,
+                          comment.createdAt >= state.startedAt,
+                          comment.createdAt >= state.checkedAt.addingTimeInterval(-120),
+                          name.split(separator: "/").first?.lowercased() == snapshot.account.login.lowercased(),
+                          state.seen[String(comment.id)] == nil,
+                          let issueURL = Self.repositoryURL(name)?.appendingPathComponent("issues/\(issue.number)"),
+                          var components = URLComponents(url: issueURL, resolvingAgainstBaseURL: false) else { continue }
+                    components.fragment = "issuecomment-\(comment.id)"
+                    guard let url = components.url else { continue }
+                    state.seen[String(comment.id)] = comment.createdAt
+                    let text = (comment.body ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+                    let preview = text.isEmpty ? "Comment added" : String(text.prefix(240))
+                    alerts.append(RepositoryToast(
+                        id: "comment-\(comment.id)", repository: name, title: "New comment on #\(issue.number)",
+                        body: comment.user.map { "\($0.login): \(preview)" } ?? preview, url: url
+                    ))
+                }
+                state.seen = state.seen.filter { $0.value >= snapshot.checkedAt.addingTimeInterval(-120) }
+                state.checkedAt = snapshot.checkedAt
+                commentState = state
+            } else {
+                commentState = CommentState(startedAt: snapshot.checkedAt, checkedAt: snapshot.checkedAt)
+            }
+        } else { commentState = nil }
         return alerts
     }
 

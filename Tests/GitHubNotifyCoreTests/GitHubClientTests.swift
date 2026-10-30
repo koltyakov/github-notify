@@ -199,10 +199,54 @@ final class GitHubClientTests: XCTestCase {
         var settings = Settings()
         settings.notifyStars = false
         settings.notifyIssues = false
+        settings.notifyIssueComments = false
         _ = try await GitHubClient(transport: transport).repositoryActivity(
             token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: Date(), settings: settings
         )
         let requests = await transport.requests
         XCTAssertTrue(requests.isEmpty)
+    }
+
+    func testCommentsOnChangedOwnedIssuesAreFetchedEvenWithNewIssuesDisabled() async throws {
+        let transport = MockTransport([
+            .init(body: #"[{"id":100,"number":3,"title":"Old bug","comments":2,"created_at":"2020-01-01T00:00:00Z","repository":{"full_name":"owner/repo"},"user":null},{"id":101,"number":4,"title":"PR","comments":1,"created_at":"2020-01-01T00:00:00Z","repository":{"full_name":"owner/repo"},"pull_request":{},"user":null},{"id":102,"number":5,"title":"Other","comments":1,"created_at":"2020-01-01T00:00:00Z","repository":{"full_name":"other/repo"},"user":null}]"#),
+            .init(headers: ["X-Poll-Interval": "180", "Link": "<https://api.github.com/repos/owner/repo/issues/3/comments?page=2>; rel=\"next\""],
+                  body: #"[{"id":200,"body":"Thanks","created_at":"2023-11-14T22:13:21Z","user":{"id":2,"login":"reader"}}]"#),
+            .init(body: #"[{"id":201,"body":null,"created_at":"2023-11-14T22:13:22Z","user":null}]"#),
+        ])
+        var settings = Settings()
+        settings.notifyStars = false
+        settings.notifyIssues = false
+        let result = try await GitHubClient(transport: transport).repositoryActivity(
+            token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil,
+            commentsSince: Date(timeIntervalSince1970: 1_700_000_000), settings: settings
+        )
+        XCTAssertEqual(result.comments.map(\.comment.id), [200, 201])
+        XCTAssertEqual(result.comments.first?.issue.number, 3)
+        XCTAssertEqual(result.pollInterval, 180)
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(requests[1].url?.path, "/repos/owner/repo/issues/3/comments")
+        XCTAssertEqual(requests[2].value(forHTTPHeaderField: "Authorization"), "Bearer test")
+        let query = URLComponents(url: requests[1].url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertTrue(query.contains(URLQueryItem(name: "since", value: "2023-11-14T22:11:20Z")))
+    }
+
+    func testCommentPaginationCannotSendTokenToAnotherOrigin() async {
+        let transport = MockTransport([
+            .init(body: #"[{"id":100,"number":3,"title":"Bug","comments":1,"created_at":"2020-01-01T00:00:00Z","repository":{"full_name":"owner/repo"},"user":null}]"#),
+            .init(headers: ["Link": "<https://example.com/comments?page=2>; rel=\"next\""]),
+        ])
+        var settings = Settings()
+        settings.notifyStars = false
+        do {
+            _ = try await GitHubClient(transport: transport).repositoryActivity(
+                token: "secret", account: GitHubAccount(id: 1, login: "owner"), issuesSince: Date(),
+                commentsSince: Date(), settings: settings
+            )
+            XCTFail("Should reject foreign comment pagination")
+        } catch GitHubError.invalidResponse {} catch { XCTFail("Unexpected error: \(error)") }
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 2)
     }
 }

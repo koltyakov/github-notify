@@ -18,13 +18,13 @@ final class NativeNotifications: NSObject, UNUserNotificationCenterDelegate {
             throw failure("Build and launch the .app bundle to enable repository alerts.")
         }
         let authorizationStatus = await withCheckedContinuation { continuation in
-            center.getNotificationSettings { settings in
+            center.getNotificationSettings { @Sendable settings in
                 continuation.resume(returning: settings.authorizationStatus)
             }
         }
         if authorizationStatus == .notDetermined {
             let granted = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, any Error>) in
-                center.requestAuthorization(options: [.alert]) { granted, error in
+                center.requestAuthorization(options: [.alert]) { @Sendable granted, error in
                     if let error { continuation.resume(throwing: error) }
                     else { continuation.resume(returning: granted) }
                 }
@@ -38,7 +38,6 @@ final class NativeNotifications: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func show(_ toast: RepositoryToast) async throws {
-        guard let center else { return }
         let content = UNMutableNotificationContent()
         content.title = toast.repository
         content.subtitle = toast.title
@@ -47,8 +46,37 @@ final class NativeNotifications: NSObject, UNUserNotificationCenterDelegate {
         content.userInfo = ["url": toast.url.absoluteString]
         // Like Varro, banners are silent and open their target when clicked.
         content.sound = nil
+        try await submit(id: toast.id, content: content)
+    }
+
+    func showTest() async throws -> Bool {
+        try await authorize()
+        let id = "test-\(UUID().uuidString)"
+        let content = UNMutableNotificationContent()
+        content.title = "GitHub Notify"
+        content.subtitle = "Test notification"
+        content.body = "This is a test of repository star, issue, and comment alerts."
+        content.userInfo = ["url": "https://github.com/koltyakov/github-notify"]
+        content.sound = nil
+        try await submit(id: id, content: content)
+        guard let center else { return false }
+        // Submission and delivery are separate. Check Notification Center before reporting success.
+        for _ in 0..<10 {
+            let delivered = await withCheckedContinuation { continuation in
+                center.getDeliveredNotifications { @Sendable notifications in
+                    continuation.resume(returning: notifications.contains { $0.request.identifier == id })
+                }
+            }
+            if delivered { return true }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        return false
+    }
+
+    private func submit(id: String, content: UNMutableNotificationContent) async throws {
+        guard let center else { throw failure("Build and launch the .app bundle to enable repository alerts.") }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-            center.add(UNNotificationRequest(identifier: toast.id, content: content, trigger: nil)) { error in
+            center.add(UNNotificationRequest(identifier: id, content: content, trigger: nil)) { @Sendable error in
                 if let error { continuation.resume(throwing: error) }
                 else { continuation.resume() }
             }

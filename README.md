@@ -12,7 +12,7 @@ Requires macOS 13 or later. Builds target the current Mac's architecture by defa
 - Favorite repositories using names or regular expressions, plus a favorites-only filter.
 - Mark the displayed repositories as read, without clearing notifications newer than the last check.
 - Native settings window, token storage in Keychain, and macOS login items.
-- Silent, clickable macOS banners for new stars and issues on repositories owned by your GitHub account.
+- Silent, clickable macOS banners for new stars, issues, and issue comments on repositories owned by your GitHub account.
 - Asynchronous network requests with pagination, GitHub polling hints, and rate-limit delays.
 
 ### Build and run
@@ -62,11 +62,13 @@ Favorite patterns use Foundation regular expressions instead of Go's RE2 syntax.
 
 ### Repository alerts
 
-New star and issue banners are enabled by default and can be turned off separately in Settings. Allow GitHub Notify when macOS requests notification permission. If permission was denied, use **Open notification settings** in the app's Settings. Banners require the `.app` bundle, not the bare executable from `swift run`.
+New star, issue, and issue-comment banners are enabled by default and can be turned off separately in Settings. Allow GitHub Notify when macOS requests notification permission. If permission was denied, use **Open notification settings** in the app's Settings. Banners require the `.app` bundle, not the bare executable from `swift run`.
+
+To send a test without accessing GitHub or changing saved baselines, run `"dist/GitHub Notify.app/Contents/MacOS/github-notify" --test-notification` after building the app. This works even if another instance is running and reports whether Notification Center confirms delivery.
 
 Alerts cover repositories owned by the token's personal GitHub account, regardless of the menu's favorites filter. Organization-owned repositories are not included. A classic token with `notifications` scope covers unread notifications and public repository activity. Add `repo` scope to include private repository activity.
 
-The first successful check establishes a silent baseline. Later checks run at most once per minute automatically, or slower if configured or requested by GitHub. Star banners report net increases in each repository's star count, not individual stargazers. Stars added and removed between checks can cancel out. Issue banners report newly created issues, including issues already closed by the time of the check, but not pull requests or comments. Clicking a banner opens the repository's stargazers or the issue on GitHub. Focus modes and macOS notification settings can suppress banners.
+The first successful check establishes a silent baseline. Later checks run at most once per minute automatically, or slower if configured or requested by GitHub. Star banners report net increases in each repository's star count, not individual stargazers. Stars added and removed between checks can cancel out. Issue banners report newly created issues, including issues already closed by the time of the check. Comment banners report new comments on existing or new issues, but not edits to old comments. Pull requests and their comments are excluded. Clicking a banner opens the repository's stargazers, the issue, or the specific comment on GitHub. Focus modes and macOS notification settings can suppress banners.
 
 Baselines are stored in `~/Library/Application Support/github-notify/activity.json` to avoid repeats after restarting. Turning an alert type off and back on establishes a fresh baseline for that type. Repository-alert errors appear separately in the menu and do not interrupt unread-notification polling.
 

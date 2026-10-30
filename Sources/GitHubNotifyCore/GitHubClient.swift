@@ -97,12 +97,7 @@ public struct GitHubClient: Sendable {
     }
 
     public func markRead(repository: String, through date: Date, token: String) async throws {
-        let parts = repository.split(separator: "/", omittingEmptySubsequences: false)
-        guard parts.count == 2, parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }),
-              !repository.contains("?"), !repository.contains("#"), !repository.contains("%") else {
-            throw GitHubError.invalidRepository
-        }
-        let url = baseURL.appendingPathComponent("repos").appendingPathComponent(repository)
+        let url = baseURL.appendingPathComponent(try repositoryPath(repository))
             .appendingPathComponent("notifications")
         var request = request(url: url, token: token)
         request.httpMethod = "PUT"
@@ -118,11 +113,12 @@ public struct GitHubClient: Sendable {
     }
 
     public func repositoryActivity(
-        token: String, account: GitHubAccount, issuesSince: Date?, settings: Settings
+        token: String, account: GitHubAccount, issuesSince: Date?, commentsSince: Date? = nil, settings: Settings
     ) async throws -> RepositoryActivitySnapshot {
         let checkedAt = Date()
         var repositories: [OwnedRepository] = []
         var issues: [RepositoryIssue] = []
+        var comments: [IssueCommentActivity] = []
         var interval: TimeInterval = 60
         if settings.notifyStars {
             let result: ([OwnedRepository], TimeInterval) = try await pages(
@@ -134,22 +130,49 @@ public struct GitHubClient: Sendable {
             repositories = result.0
             interval = max(interval, result.1)
         }
-        if settings.notifyIssues, let issuesSince {
+        let issueDates = [settings.notifyIssues ? issuesSince : nil, settings.notifyIssueComments ? commentsSince : nil]
+            .compactMap { $0 }
+        if let since = issueDates.min() {
             let result: ([RepositoryIssue], TimeInterval) = try await pages(
                 path: "issues", query: [
                     URLQueryItem(name: "filter", value: "all"),
                     URLQueryItem(name: "state", value: "all"),
                     URLQueryItem(name: "owned", value: "true"),
                     URLQueryItem(name: "pulls", value: "false"),
-                    URLQueryItem(name: "since", value: ISO8601DateFormatter().string(from: issuesSince.addingTimeInterval(-120))),
+                    URLQueryItem(name: "since", value: ISO8601DateFormatter().string(from: since.addingTimeInterval(-120))),
                 ], token: token
             )
             issues = result.0
             interval = max(interval, result.1)
         }
+        if settings.notifyIssueComments, let commentsSince {
+            var visitedIssues = Set<Int>()
+            for issue in issues where !issue.isPullRequest && issue.comments > 0 {
+                guard issue.repository.fullName.split(separator: "/").first?.lowercased() == account.login.lowercased(),
+                      issue.number > 0, visitedIssues.insert(issue.id).inserted else { continue }
+                let path = try repositoryPath(issue.repository.fullName) + "/issues/\(issue.number)/comments"
+                let result: ([RepositoryIssueComment], TimeInterval) = try await pages(
+                    path: path, query: [
+                        URLQueryItem(name: "since", value: ISO8601DateFormatter().string(from: commentsSince.addingTimeInterval(-120))),
+                    ], token: token
+                )
+                comments += result.0.map { IssueCommentActivity(issue: issue, comment: $0) }
+                interval = max(interval, result.1)
+            }
+        }
         return RepositoryActivitySnapshot(
-            account: account, repositories: repositories, issues: issues, checkedAt: checkedAt, pollInterval: interval
+            account: account, repositories: repositories, issues: issues, comments: comments,
+            checkedAt: checkedAt, pollInterval: interval
         )
+    }
+
+    private func repositoryPath(_ repository: String) throws -> String {
+        let parts = repository.split(separator: "/", omittingEmptySubsequences: false)
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
+        guard parts.count == 2, parts.allSatisfy({
+            !$0.isEmpty && $0 != "." && $0 != ".." && $0.unicodeScalars.allSatisfy(allowed.contains)
+        }) else { throw GitHubError.invalidRepository }
+        return "repos/" + repository
     }
 
     private func pages<Item: Decodable>(

@@ -11,11 +11,12 @@ public struct Settings: Codable, Equatable, Sendable {
     public var autoStart = false
     public var notifyStars = true
     public var notifyIssues = true
+    public var notifyIssueComments = true
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case updateFrequency, favoriteRepos, filtersMode, autoStart, notifyStars, notifyIssues
+        case updateFrequency, favoriteRepos, filtersMode, autoStart, notifyStars, notifyIssues, notifyIssueComments
     }
 
     public init(from decoder: any Decoder) throws {
@@ -27,6 +28,7 @@ public struct Settings: Codable, Equatable, Sendable {
         autoStart = try values.decodeIfPresent(Bool.self, forKey: .autoStart) ?? false
         notifyStars = try values.decodeIfPresent(Bool.self, forKey: .notifyStars) ?? true
         notifyIssues = try values.decodeIfPresent(Bool.self, forKey: .notifyIssues) ?? true
+        notifyIssueComments = try values.decodeIfPresent(Bool.self, forKey: .notifyIssueComments) ?? true
     }
 
     // Accept the duration strings used by the Go app, including compound values like 1m30s.

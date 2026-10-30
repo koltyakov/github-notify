@@ -10,6 +10,7 @@ final class SettingsWindowController: NSWindowController {
     private let autoStart = NSButton(checkboxWithTitle: "Launch at login", target: nil, action: nil)
     private let notifyStars = NSButton(checkboxWithTitle: "New repository stars", target: nil, action: nil)
     private let notifyIssues = NSButton(checkboxWithTitle: "New repository issues", target: nil, action: nil)
+    private let notifyIssueComments = NSButton(checkboxWithTitle: "New issue comments", target: nil, action: nil)
     private let onSave: (Settings, String) throws -> Void
     private var settings: Settings
     private let intervals = ["10s", "30s", "120s"]
@@ -48,6 +49,7 @@ final class SettingsWindowController: NSWindowController {
         autoStart.state = LaunchAtLogin.isEnabled ? .on : .off
         notifyStars.state = settings.notifyStars ? .on : .off
         notifyIssues.state = settings.notifyIssues ? .on : .off
+        notifyIssueComments.state = settings.notifyIssueComments ? .on : .off
 
         let notificationSettings = NSButton(title: "Open notification settings", target: self, action: #selector(openNotificationSettings))
         notificationSettings.bezelStyle = .rounded
@@ -70,7 +72,7 @@ final class SettingsWindowController: NSWindowController {
             hint("GitHub's minimum polling interval takes precedence to avoid rate limits."),
             label("Favorite repositories"), favorites,
             hint("Separate repository names or regular expressions with commas or newlines. Example: ^owner/repo$ or ^owner/"),
-            label("Desktop notifications"), notifyStars, notifyIssues,
+            label("Desktop notifications"), notifyStars, notifyIssues, notifyIssueComments,
             hint("Silent banners for repositories owned by your GitHub account, independent of the menu filter. Stars report net increases between checks. Private repositories require the repo token scope."),
             notificationSettings,
             autoStart, buttons,
@@ -131,6 +133,7 @@ final class SettingsWindowController: NSWindowController {
         updated.autoStart = autoStart.state == .on
         updated.notifyStars = notifyStars.state == .on
         updated.notifyIssues = notifyIssues.state == .on
+        updated.notifyIssueComments = notifyIssueComments.state == .on
         do {
             try updated.validate()
             try onSave(updated, tokenField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
