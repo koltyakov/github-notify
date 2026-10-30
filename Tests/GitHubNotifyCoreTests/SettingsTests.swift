@@ -8,6 +8,8 @@ final class SettingsTests: XCTestCase {
         let settings = try SettingsStore(url: url).load()
         XCTAssertEqual(settings, Settings())
         XCTAssertEqual(settings.pollInterval, 30)
+        XCTAssertTrue(settings.notifyStars)
+        XCTAssertTrue(settings.notifyIssues)
     }
 
     func testLegacySettingsKeepPreferencesButNeverPersistToken() throws {
@@ -54,6 +56,8 @@ final class SettingsTests: XCTestCase {
         let store = SettingsStore(url: folder.appendingPathComponent("settings.json"))
         var settings = Settings()
         settings.favoriteRepos = ["^swiftlang/"]
+        settings.notifyStars = false
+        settings.notifyIssues = false
         try store.save(settings)
         XCTAssertEqual(try store.load(), settings)
         let attributes = try FileManager.default.attributesOfItem(atPath: store.url.path)

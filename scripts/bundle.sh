@@ -2,13 +2,18 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-version="${VERSION:-0.0.0}"
+version="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
 arch="${ARCH:-arm64}"
 identity="${CODESIGN_IDENTITY:--}"
 
-if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "VERSION must contain three numbers, for example 1.2.3" >&2
+if [[ ! "$version" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
+    echo "VERSION must contain only letters, numbers, dots, underscores, plus signs, or hyphens." >&2
     exit 1
+fi
+# Preserve the complete Git description for About, but keep Apple's version fields numeric.
+bundle_version=0.0.0
+if [[ "$version" =~ ^v?([0-9]+\.[0-9]+\.[0-9]+)([-+].*)?$ ]]; then
+    bundle_version="${BASH_REMATCH[1]}"
 fi
 case "$arch" in
     arm64|x86_64)
@@ -36,8 +41,9 @@ for state in base notice warn error; do
     cp "assets/tray/$state.png" "$app/Contents/Resources/status-$state.png"
 done
 cp packaging/Info.plist "$app/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$app/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $version" "$app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $bundle_version" "$app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $bundle_version" "$app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :GitHubNotifyVersion $version" "$app/Contents/Info.plist"
 
 # Generate the app icon using only tools shipped with macOS.
 iconset=".build/AppIcon.iconset"
@@ -57,4 +63,4 @@ fi
 /usr/bin/codesign --verify --strict "$app"
 /usr/bin/ditto "$app" "dist/staging/GitHub Notify.app"
 ln -sfn /Applications dist/staging/Applications
-echo "Built $app for $arch"
+echo "Built $app $version for $arch"

@@ -8,6 +8,8 @@ final class SettingsWindowController: NSWindowController {
     private let frequency = NSPopUpButton()
     private let favorites = NSTextField(wrappingLabelWithString: "")
     private let autoStart = NSButton(checkboxWithTitle: "Launch at login", target: nil, action: nil)
+    private let notifyStars = NSButton(checkboxWithTitle: "New repository stars", target: nil, action: nil)
+    private let notifyIssues = NSButton(checkboxWithTitle: "New repository issues", target: nil, action: nil)
     private let onSave: (Settings, String) throws -> Void
     private var settings: Settings
     private let intervals = ["10s", "30s", "120s"]
@@ -44,6 +46,11 @@ final class SettingsWindowController: NSWindowController {
         favorites.stringValue = settings.favoriteRepos.joined(separator: ", ")
         favorites.setAccessibilityLabel("Favorite repositories")
         autoStart.state = LaunchAtLogin.isEnabled ? .on : .off
+        notifyStars.state = settings.notifyStars ? .on : .off
+        notifyIssues.state = settings.notifyIssues ? .on : .off
+
+        let notificationSettings = NSButton(title: "Open notification settings", target: self, action: #selector(openNotificationSettings))
+        notificationSettings.bezelStyle = .rounded
 
         let createToken = NSButton(title: "Create token on GitHub", target: self, action: #selector(openTokenPage))
         createToken.bezelStyle = .rounded
@@ -63,6 +70,9 @@ final class SettingsWindowController: NSWindowController {
             hint("GitHub's minimum polling interval takes precedence to avoid rate limits."),
             label("Favorite repositories"), favorites,
             hint("Separate repository names or regular expressions with commas or newlines. Example: ^owner/repo$ or ^owner/"),
+            label("Desktop notifications"), notifyStars, notifyIssues,
+            hint("Silent banners for repositories owned by your GitHub account, independent of the menu filter. Stars report net increases between checks. Private repositories require the repo token scope."),
+            notificationSettings,
             autoStart, buttons,
         ])
         stack.orientation = .vertical
@@ -107,6 +117,9 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func openTokenPage() { NSWorkspace.shared.open(AppDelegate.tokenURL) }
+    @objc private func openNotificationSettings() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!)
+    }
     @objc private func cancelSettings() { close() }
 
     @objc private func saveSettings() {
@@ -116,6 +129,8 @@ final class SettingsWindowController: NSWindowController {
             updated.updateFrequency = intervals[frequency.indexOfSelectedItem]
         }
         updated.autoStart = autoStart.state == .on
+        updated.notifyStars = notifyStars.state == .on
+        updated.notifyIssues = notifyIssues.state == .on
         do {
             try updated.validate()
             try onSave(updated, tokenField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))

@@ -1,4 +1,4 @@
-version ?= 0.0.0
+version ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 arch ?= $(shell uname -m)
 .DEFAULT_GOAL := build
 

@@ -16,6 +16,8 @@
     <string>0.0.0</string>
     <key>CFBundleVersion</key>
     <string>0.0.0</string>
+    <key>GitHubNotifyVersion</key>
+    <string>Development</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
@@ -24,6 +26,8 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSUserNotificationAlertStyle</key>
+    <string>banner</string>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © Andrew Koltyakov. MIT License.</string>
 </dict>

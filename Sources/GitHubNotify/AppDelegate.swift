@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = SettingsStore()
     private let tokenStore = TokenStore()
     private let client = GitHubClient()
+    private let activityMonitor = RepositoryActivityMonitor()
     private var settings = Settings()
     private var token = ""
     private var statusItem: NSStatusItem!
@@ -15,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var tokenItem: NSMenuItem!
     private var allItem: NSMenuItem!
     private var favoritesItem: NSMenuItem!
+    private var activityItem: NSMenuItem!
     private var settingsWindow: SettingsWindowController?
     private var pollingTask: Task<Void, Never>?
     private var markingTask: Task<Void, Never>?
@@ -45,12 +47,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(wake), name: NSWorkspace.didWakeNotification, object: nil
         )
         if let startupError { showError(startupError) }
-        else { restartPolling() }
+        else {
+            restartPolling()
+            restartActivityMonitoring()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         pollingTask?.cancel()
         markingTask?.cancel()
+        activityMonitor.stop()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
@@ -83,6 +89,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tokenItem = item("Get token", action: #selector(getToken))
         tokenItem.isHidden = !token.isEmpty
         menu.addItem(tokenItem)
+        activityItem = item("Repository alerts are starting…", action: #selector(openSettings))
+        menu.addItem(activityItem)
         menu.addItem(item("Settings…", action: #selector(openSettings), key: ","))
         menu.addItem(.separator())
         menu.addItem(item("About GitHub Notify", action: #selector(about)))
@@ -172,6 +180,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func restartActivityMonitoring() {
+        activityMonitor.start(token: token, settings: settings) { [weak self] message in
+            self?.activityItem.title = message
+            self?.activityItem.toolTip = message
+        }
+    }
+
     private func render(_ snapshot: NotificationSnapshot) {
         let summary = NotificationSummary(notifications: snapshot.notifications, settings: settings)
         self.summary = summary
@@ -207,8 +222,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func filterAll() { setFilter(.all) }
     @objc private func filterFavorites() { setFilter(.favorite) }
-    @objc private func refresh() { restartPolling() }
-    @objc private func wake() { restartPolling() }
+    @objc private func refresh() {
+        restartPolling()
+        restartActivityMonitoring()
+    }
+    @objc private func wake() {
+        restartPolling()
+        restartActivityMonitoring()
+    }
     @objc private func openNotifications() {
         NSWorkspace.shared.open(URL(string: "https://github.com/notifications?query=is%3Aunread")!)
     }
@@ -284,6 +305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.marking = false
             self.updateFilterChecks()
             self.restartPolling()
+            self.restartActivityMonitoring()
         }
         settingsWindow = window
         window.present()
@@ -293,8 +315,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "GitHub Notify",
-            .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development",
-            .credits: NSAttributedString(string: "A native macOS menu bar app for GitHub notifications.\nhttps://github.com/koltyakov/github-notify"),
+            .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "GitHubNotifyVersion") as? String
+                ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development",
+            .credits: NSAttributedString(string: "GitHub notifications in your menu bar.\nhttps://github.com/koltyakov/github-notify"),
         ])
     }
 }

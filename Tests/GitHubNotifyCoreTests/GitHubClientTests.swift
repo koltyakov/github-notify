@@ -133,4 +133,76 @@ final class GitHubClientTests: XCTestCase {
         let requests = await transport.requests
         XCTAssertTrue(requests.isEmpty)
     }
+
+    func testActivityFetchesOwnedRepositoriesWithPaginationAndPollingHints() async throws {
+        let transport = MockTransport([
+            .init(body: #"{"id":1,"login":"owner"}"#),
+            .init(headers: ["X-Poll-Interval": "120", "Link": "<https://api.github.com/user/repos?page=2>; rel=\"next\""],
+                  body: #"[{"id":10,"full_name":"owner/one","stargazers_count":3}]"#),
+            .init(body: #"[{"id":20,"full_name":"owner/two","stargazers_count":8}]"#),
+        ])
+        let client = GitHubClient(transport: transport)
+        let account = try await client.account(token: "test")
+        let snapshot = try await client.repositoryActivity(token: "test", account: account, issuesSince: nil, settings: Settings())
+        XCTAssertEqual(snapshot.repositories.map(\.stargazersCount), [3, 8])
+        XCTAssertEqual(snapshot.pollInterval, 120)
+        XCTAssertTrue(snapshot.issues.isEmpty)
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(requests[0].url?.path, "/user")
+        let query = URLComponents(url: requests[1].url!, resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertTrue(query?.contains(URLQueryItem(name: "affiliation", value: "owner")) == true)
+        XCTAssertEqual(requests[2].value(forHTTPHeaderField: "Authorization"), "Bearer test")
+    }
+
+    func testActivityQueriesAllIssueStatesWithOverlapAndPagination() async throws {
+        let body = #"[{"id":100,"number":3,"title":"A bug","created_at":"2023-11-14T22:13:21Z","repository":{"full_name":"owner/repo"},"user":null}]"#
+        let transport = MockTransport([
+            .init(headers: ["Link": "<https://api.github.com/issues?page=2>; rel=\"next\""], body: body),
+            .init(body: "[]"),
+        ])
+        var settings = Settings()
+        settings.notifyStars = false
+        let snapshot = try await GitHubClient(transport: transport).repositoryActivity(
+            token: "test", account: GitHubAccount(id: 1, login: "owner"),
+            issuesSince: Date(timeIntervalSince1970: 1_700_000_000), settings: settings
+        )
+        XCTAssertEqual(snapshot.issues.first?.title, "A bug")
+        XCTAssertEqual(snapshot.pollInterval, 60)
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 2)
+        let query = URLComponents(url: requests[0].url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertTrue(query.contains(URLQueryItem(name: "filter", value: "all")))
+        XCTAssertTrue(query.contains(URLQueryItem(name: "state", value: "all")))
+        XCTAssertTrue(query.contains(URLQueryItem(name: "since", value: "2023-11-14T22:11:20Z")))
+    }
+
+    func testActivityPaginationRejectsForeignOriginsWrongPathsAndCycles() async {
+        for target in [
+            "https://example.com/user/repos?page=2", "https://api.github.com/notifications?page=2",
+            "https://api.github.com/user/repos?affiliation=owner&sort=full_name&per_page=100",
+        ] {
+            let transport = MockTransport([.init(headers: ["Link": "<\(target)>; rel=\"next\""])])
+            do {
+                _ = try await GitHubClient(transport: transport).repositoryActivity(
+                    token: "secret", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil, settings: Settings()
+                )
+                XCTFail("Should reject \(target)")
+            } catch GitHubError.invalidResponse {} catch { XCTFail("Unexpected error: \(error)") }
+            let requests = await transport.requests
+            XCTAssertEqual(requests.count, 1)
+        }
+    }
+
+    func testDisabledActivityMakesNoRequests() async throws {
+        let transport = MockTransport([])
+        var settings = Settings()
+        settings.notifyStars = false
+        settings.notifyIssues = false
+        _ = try await GitHubClient(transport: transport).repositoryActivity(
+            token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: Date(), settings: settings
+        )
+        let requests = await transport.requests
+        XCTAssertTrue(requests.isEmpty)
+    }
 }

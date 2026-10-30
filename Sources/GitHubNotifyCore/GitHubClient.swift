@@ -112,6 +112,68 @@ public struct GitHubClient: Sendable {
         _ = try await send(request)
     }
 
+    public func account(token: String) async throws -> GitHubAccount {
+        let (data, _) = try await send(request(url: baseURL.appendingPathComponent("user"), token: token))
+        return try JSONDecoder().decode(GitHubAccount.self, from: data)
+    }
+
+    public func repositoryActivity(
+        token: String, account: GitHubAccount, issuesSince: Date?, settings: Settings
+    ) async throws -> RepositoryActivitySnapshot {
+        let checkedAt = Date()
+        var repositories: [OwnedRepository] = []
+        var issues: [RepositoryIssue] = []
+        var interval: TimeInterval = 60
+        if settings.notifyStars {
+            let result: ([OwnedRepository], TimeInterval) = try await pages(
+                path: "user/repos", query: [
+                    URLQueryItem(name: "affiliation", value: "owner"),
+                    URLQueryItem(name: "sort", value: "full_name"),
+                ], token: token
+            )
+            repositories = result.0
+            interval = max(interval, result.1)
+        }
+        if settings.notifyIssues, let issuesSince {
+            let result: ([RepositoryIssue], TimeInterval) = try await pages(
+                path: "issues", query: [
+                    URLQueryItem(name: "filter", value: "all"),
+                    URLQueryItem(name: "state", value: "all"),
+                    URLQueryItem(name: "owned", value: "true"),
+                    URLQueryItem(name: "pulls", value: "false"),
+                    URLQueryItem(name: "since", value: ISO8601DateFormatter().string(from: issuesSince.addingTimeInterval(-120))),
+                ], token: token
+            )
+            issues = result.0
+            interval = max(interval, result.1)
+        }
+        return RepositoryActivitySnapshot(
+            account: account, repositories: repositories, issues: issues, checkedAt: checkedAt, pollInterval: interval
+        )
+    }
+
+    private func pages<Item: Decodable>(
+        path: String, query: [URLQueryItem], token: String
+    ) async throws -> ([Item], TimeInterval) {
+        var next: URL? = baseURL.appendingPathComponent(path)
+            .appending(queryItems: query + [URLQueryItem(name: "per_page", value: "100")])
+        var visited = Set<URL>()
+        var items: [Item] = []
+        var interval: TimeInterval = 0
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        while let url = next {
+            try Task.checkCancellation()
+            guard visited.insert(url).inserted else { throw GitHubError.invalidResponse }
+            let (data, response) = try await send(request(url: url, token: token))
+            items += try decoder.decode([Item].self, from: data)
+            if let value = response.value(forHTTPHeaderField: "X-Poll-Interval"),
+               let seconds = Double(value), seconds.isFinite, seconds > 0 { interval = max(interval, seconds) }
+            next = try nextPage(response.value(forHTTPHeaderField: "Link"), path: "/" + path)
+        }
+        return (items, interval)
+    }
+
     private func request(url: URL, token: String) -> URLRequest {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -136,7 +198,7 @@ public struct GitHubClient: Sendable {
         return result
     }
 
-    private func nextPage(_ link: String?) throws -> URL? {
+    private func nextPage(_ link: String?, path: String = "/notifications") throws -> URL? {
         guard let link else { return nil }
         for part in link.components(separatedBy: ",") {
             let sections = part.components(separatedBy: ";")
@@ -147,7 +209,7 @@ public struct GitHubClient: Sendable {
             guard target.hasPrefix("<"), target.hasSuffix(">"),
                   let url = URL(string: String(target.dropFirst().dropLast())),
                   url.scheme == "https", url.host == baseURL.host, url.port == nil,
-                  url.user == nil, url.password == nil, url.path == "/notifications" else {
+                  url.user == nil, url.password == nil, url.path == path else {
                 throw GitHubError.invalidResponse
             }
             return url

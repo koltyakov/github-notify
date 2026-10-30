@@ -12,7 +12,8 @@ Requires macOS 13 or later. Builds target the current Mac's architecture by defa
 - Favorite repositories using names or regular expressions, plus a favorites-only filter.
 - Mark the displayed repositories as read, without clearing notifications newer than the last check.
 - Native settings window, token storage in Keychain, and macOS login items.
-- Asynchronous network requests with pagination, GitHub polling hints, and rate-limit delays. No pop-ups for incoming notifications.
+- Silent, clickable macOS banners for new stars and issues on repositories owned by your GitHub account.
+- Asynchronous network requests with pagination, GitHub polling hints, and rate-limit delays.
 
 ### Build and run
 
@@ -45,6 +46,8 @@ make version=1.2.3 dmg      # Set bundle and installer version
 
 `make run` builds and opens the app. `swift build` builds a debug executable, which uses SF Symbols if the bundled artwork is unavailable. Launch at login requires the `.app` bundle.
 
+Local builds use `git describe --tags --always --dirty` as their version, including the nearest tag, commits since the tag, and any uncommitted changes. Without tags, Git supplies the commit hash; without Git metadata, the version is `dev`. About shows the full version. macOS bundle version fields use the tag's numeric `major.minor.patch`, or `0.0.0` when no numeric version is available. Override it with `make version=1.2.3 app`, or `VERSION=1.2.3 /bin/bash scripts/bundle.sh` when running the script directly.
+
 Builds use only Swift Package Manager and macOS's `sips`, `iconutil`, `codesign`, and `hdiutil`. The app has no Dock icon and prevents duplicate instances. It sleeps between checks and checks again after the Mac wakes.
 
 ### Settings and migration
@@ -56,6 +59,16 @@ The old encrypted token is not imported. Enter it once in Settings to store it i
 Quit the old Go app before opening the native version. If you enabled launch at login in the old app, disable it there first, or remove its `github-notify` entry from `~/Library/LaunchAgents/`. Then enable launch at login in the native app. The app uses macOS's actual login-item status instead of automatically registering an old saved preference. macOS may ask you to approve the new item under System Settings > General > Login Items.
 
 Favorite patterns use Foundation regular expressions instead of Go's RE2 syntax. Common patterns such as `^owner/` and `^owner/repo$` work unchanged. GitHub's minimum polling interval overrides a faster saved interval.
+
+### Repository alerts
+
+New star and issue banners are enabled by default and can be turned off separately in Settings. Allow GitHub Notify when macOS requests notification permission. If permission was denied, use **Open notification settings** in the app's Settings. Banners require the `.app` bundle, not the bare executable from `swift run`.
+
+Alerts cover repositories owned by the token's personal GitHub account, regardless of the menu's favorites filter. Organization-owned repositories are not included. A classic token with `notifications` scope covers unread notifications and public repository activity. Add `repo` scope to include private repository activity.
+
+The first successful check establishes a silent baseline. Later checks run at most once per minute automatically, or slower if configured or requested by GitHub. Star banners report net increases in each repository's star count, not individual stargazers. Stars added and removed between checks can cancel out. Issue banners report newly created issues, including issues already closed by the time of the check, but not pull requests or comments. Clicking a banner opens the repository's stargazers or the issue on GitHub. Focus modes and macOS notification settings can suppress banners.
+
+Baselines are stored in `~/Library/Application Support/github-notify/activity.json` to avoid repeats after restarting. Turning an alert type off and back on establishes a fresh baseline for that type. Repository-alert errors appear separately in the menu and do not interrupt unread-notification polling.
 
 ### Signing and distribution
 
