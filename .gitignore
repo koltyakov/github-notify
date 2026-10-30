@@ -1,16 +1,11 @@
-token
+.build/
+.swiftpm/
+dist/
 bin/
 pkg/
-dist/
-.idea
-
-*.out
-
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-.DS_store%
+legacy/bin/
+legacy/dist/
+.idea/
+.DS_Store
+*.xcuserstate
+xcuserdata/

@@ -1,81 +1,45 @@
-# `make version=0.1.0 tag`
-version := 0.0.0-SNAPSHOT
-author  := Andrew Koltyakov
-app     := GitHub Notify
-id      := com.koltyakov.github-notify
+version ?= 0.0.0
+arch ?= $(shell uname -m)
+.DEFAULT_GOAL := build
 
+.PHONY: build build-darwin app bundle-darwin dmg test start run install clean
+
+ifeq ($(OS),Windows_NT)
+host_os := Windows
+else
+host_os := $(shell uname -s)
+endif
+
+ifeq ($(host_os),Darwin)
+INSTALL_DIR ?= /Applications
+install: app
+	swift scripts/install-macos.swift "dist/GitHub Notify.app" "$(INSTALL_DIR)"
+else
 install:
-	go get -u ./... && go mod tidy
-	which appify || go get github.com/machinebox/appify
-	which create-dmg || npm i -g create-dmg
-	which goreleaser || curl -sfL https://install.goreleaser.com/github.com/goreleaser/goreleaser.sh | sh
-
-format:
-	gofmt -s -w .
-
-generate:
-	cd icon/ && ./gen.sh
-	make format
-
-build-win:
-	GOOS=windows GOARCH=amd64 go build -v -ldflags "-s -w -X main.version=$(version) -H=windowsgui" -o bin/win/github-notify.exe ./
-
-build-darwin:
-	GOOS=darwin GOARCH=amd64 go build -v -ldflags "-s -w -X main.version=$(version)" -o bin/darwin/github-notify ./
-
-build-linux:
-	GOOS=linux GOARCH=amd64 go build -v -ldflags "-s -w -X main.version=$(version)" -o bin/linux/github-notify ./
+	$(MAKE) -C legacy version="$(version)" install
+endif
 
 build:
-	go build -v -o bin/github-notify ./
+	swift build -c release --arch $(arch)
+
+build-darwin: build
+
+test:
+	swift test
+
+app:
+	VERSION="$(version)" ARCH="$(arch)" /bin/bash scripts/bundle.sh
+
+bundle-darwin: dmg
+
+dmg: app
+	/usr/bin/hdiutil create -volname "GitHub Notify" -srcfolder "dist/staging" -ov -format UDZO "dist/github-notify_$(version)_macos_$(arch).dmg"
+	cd dist && shasum -a 256 "github-notify_$(version)_macos_$(arch).dmg" > "github-notify_$(version)_macos_$(arch).dmg.sha256"
+
+start: run
+
+run: app
+	open "dist/GitHub Notify.app"
 
 clean:
-	rm -rf bin/ dist/
-
-bundle-darwin: build-darwin
-	# Package solution to .app folder
-	cd bin/darwin/ && \
-		appify \
-			-author "$(author)" \
-			-id $(id) \
-			-version $(version) \
-			-name "$(app)" \
-			-icon ../../assets/icon.png \
-			./github-notify
-	/usr/libexec/PlistBuddy -c 'Add :LSUIElement bool true' 'bin/darwin/$(app).app/Contents/Info.plist'
-	rm 'bin/darwin/$(app).app/Contents/README'
-	# Package solution to .dmg image
-	cd bin/darwin/ && \
-		create-dmg --dmg-title='$(app)' '$(app).app' ./ \
-			|| true # ignore Error 2
-	# Rename .dmg appropriately
-	mv 'bin/darwin/$(app) $(version).dmg' bin/darwin/github-notify_$(version)_darwin_x86_64.dmg
-	# Remove temp files
-	rm -rf 'bin/darwin/$(app).app'
-
-bundle-linux:
-	docker build . -t github-notify
-	docker run -v $$PWD/bin:/build/bin -t github-notify make version=$(version) build-linux
-
-tag:
-	git tag -a v$(version) -m "Version $(version)"
-	git push origin --tags
-
-release-snapshot:
-	curl -sfL https://install.goreleaser.com/github.com/goreleaser/goreleaser.sh | sh
-	./bin/goreleaser --rm-dist --skip-publish --snapshot
-	cd dist && ls *.dmg | xargs shasum -a256 >> $$(ls *_checksums.txt)
-
-release:
-	curl -sfL https://install.goreleaser.com/github.com/goreleaser/goreleaser.sh | sh
-	./bin/goreleaser --rm-dist --skip-publish
-	cd dist && ls *.dmg | xargs shasum -a256 >> $$(ls *_checksums.txt)
-
-lint-cyclo:
-	which gocyclo || go get github.com/fzipp/gocyclo/cmd/gocyclo
-	gocyclo ./  
-
-start: run # alias for run
-run:
-	pkill github-notify || true
-	nohup go run ./ >/dev/null 2>&1 &
+	swift package clean

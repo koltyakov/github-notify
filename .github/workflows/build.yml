@@ -2,68 +2,68 @@ name: Build
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   pull_request:
-    branches: [ master ]
 
 jobs:
-
-  build-darwin:
-    name: Build (macOS)
-    runs-on: macos-latest
+  macos:
+    name: Test and build native macOS app
+    runs-on: macos-15
     steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode 16.4 with Swift 6
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+      - name: Test
+        run: make test
+      - name: Build Apple Silicon app
+        run: make arch=arm64 app
+      - name: Verify architecture and bundle
+        run: |
+          lipo "dist/GitHub Notify.app/Contents/MacOS/github-notify" -verify_arch arm64
+          codesign --verify --strict "dist/GitHub Notify.app"
+          plutil -lint "dist/GitHub Notify.app/Contents/Info.plist"
+      - name: Verify install and update in a temporary destination
+        run: |
+          install_dir="$(mktemp -d)/Applications with spaces"
+          make arch=arm64 install INSTALL_DIR="$install_dir"
+          touch "$install_dir/GitHub Notify.app/obsolete-test-file"
+          swift scripts/install-macos.swift "dist/GitHub Notify.app" "$install_dir"
+          test ! -e "$install_dir/GitHub Notify.app/obsolete-test-file"
+          codesign --verify --strict "$install_dir/GitHub Notify.app"
+      - name: Archive app with executable permissions
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/GitHub Notify.app" dist/github-notify-arm64.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: github-notify-arm64
+          path: dist/github-notify-arm64.zip
 
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v2
-      with:
-        go-version: ^1.15
-
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
-
-    - name: Get dependencies
-      run: go get -v -t -d ./...
-
-    - name: Build
-      run: make build-darwin
-
-  build-linux:
-    name: Build (Linux)
-    runs-on: ubuntu-latest
+  legacy:
+    name: Legacy Go, ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: build-win
+          - os: ubuntu-24.04
+            target: build-linux
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: legacy
     steps:
-
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v2
-      with:
-        go-version: ^1.15
-
-    - name: System Prerequisites
-      run: sudo apt-get install gcc libgtk-3-dev libappindicator3-dev
-
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
-
-    - name: Get dependencies
-      run: go get -v -t -d ./...
-
-    - name: Build
-      run: make build-linux
-
-  build-win:
-    name: Build (Windows)
-    runs-on: windows-latest
-    steps:
-
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v2
-      with:
-        go-version: ^1.15
-
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
-
-    - name: Get dependencies
-      run: go get -v -t -d ./...
-
-    - name: Build
-      run: make build-win
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: legacy/go.sum
+      - name: Install Linux tray dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev
+      - name: Test
+        run: go test ./...
+      - name: Build
+        run: make ${{ matrix.target }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: legacy-${{ runner.os }}
+          path: legacy/bin
