@@ -6,11 +6,14 @@ import ServiceManagement
 final class SettingsWindowController: NSWindowController {
     private let tokenField = NSSecureTextField()
     private let frequency = NSPopUpButton()
-    private let favorites = NSTextField(wrappingLabelWithString: "")
+    private let favorites = NSTextView()
     private let autoStart = NSButton(checkboxWithTitle: "Launch at login", target: nil, action: nil)
-    private let notifyStars = NSButton(checkboxWithTitle: "New repository stars", target: nil, action: nil)
-    private let notifyIssues = NSButton(checkboxWithTitle: "New repository issues", target: nil, action: nil)
-    private let notifyIssueComments = NSButton(checkboxWithTitle: "New issue comments", target: nil, action: nil)
+    private let notifyStars = NSButton(checkboxWithTitle: "Stars and unstars", target: nil, action: nil)
+    private let notifyForks = NSButton(checkboxWithTitle: "Forks", target: nil, action: nil)
+    private let notifyIssues = NSButton(checkboxWithTitle: "Issues", target: nil, action: nil)
+    private let notifyPullRequests = NSButton(checkboxWithTitle: "Pull requests", target: nil, action: nil)
+    private let notifyIssueComments = NSButton(checkboxWithTitle: "Issue comments", target: nil, action: nil)
+    private let notifyPullRequestComments = NSButton(checkboxWithTitle: "Pull request comments", target: nil, action: nil)
     private let onSave: (Settings, String) throws -> Void
     private var settings: Settings
     private let intervals = ["10s", "30s", "120s"]
@@ -40,16 +43,36 @@ final class SettingsWindowController: NSWindowController {
         frequency.setAccessibilityLabel("Update frequency")
         favorites.isEditable = true
         favorites.isSelectable = true
-        favorites.isBezeled = true
-        favorites.drawsBackground = true
-        favorites.maximumNumberOfLines = 4
-        favorites.preferredMaxLayoutWidth = 462
-        favorites.stringValue = settings.favoriteRepos.joined(separator: ", ")
+        favorites.isRichText = false
+        favorites.isAutomaticQuoteSubstitutionEnabled = false
+        favorites.isAutomaticDashSubstitutionEnabled = false
+        favorites.isAutomaticTextReplacementEnabled = false
+        favorites.font = .systemFont(ofSize: NSFont.systemFontSize)
+        favorites.textContainerInset = NSSize(width: 4, height: 4)
+        favorites.isVerticallyResizable = true
+        favorites.isHorizontallyResizable = false
+        favorites.autoresizingMask = [.width]
+        favorites.textContainer?.widthTracksTextView = true
+        favorites.string = settings.favoriteRepos.joined(separator: "\n")
         favorites.setAccessibilityLabel("Favorite repositories")
+        let favoritesScroll = NSScrollView()
+        favoritesScroll.borderType = .bezelBorder
+        favoritesScroll.hasVerticalScroller = true
+        favoritesScroll.documentView = favorites
         autoStart.state = LaunchAtLogin.isEnabled ? .on : .off
         notifyStars.state = settings.notifyStars ? .on : .off
         notifyIssues.state = settings.notifyIssues ? .on : .off
         notifyIssueComments.state = settings.notifyIssueComments ? .on : .off
+        notifyForks.state = settings.notifyForks ? .on : .off
+        notifyPullRequests.state = settings.notifyPullRequests ? .on : .off
+        notifyPullRequestComments.state = settings.notifyPullRequestComments ? .on : .off
+
+        let alertOptions = NSGridView(views: [
+            [notifyStars, notifyForks], [notifyIssues, notifyPullRequests],
+            [notifyIssueComments, notifyPullRequestComments],
+        ])
+        alertOptions.columnSpacing = 16
+        alertOptions.rowSpacing = 6
 
         let notificationSettings = NSButton(title: "Open notification settings", target: self, action: #selector(openNotificationSettings))
         notificationSettings.bezelStyle = .rounded
@@ -67,13 +90,13 @@ final class SettingsWindowController: NSWindowController {
 
         let stack = NSStackView(views: [
             label("GitHub token"), tokenField,
-            hint("Use a classic personal access token with the notifications scope. The token is stored in your macOS Keychain."),
+            hint("Use a classic personal access token with notifications and repo scopes. repo includes private-repository access. The token is stored in your macOS Keychain."),
             label("Update frequency"), frequency,
             hint("GitHub's minimum polling interval takes precedence to avoid rate limits."),
-            label("Favorite repositories"), favorites,
-            hint("Separate repository names or regular expressions with commas or newlines. Example: ^owner/repo$ or ^owner/"),
-            label("Desktop notifications"), notifyStars, notifyIssues, notifyIssueComments,
-            hint("Silent banners for repositories owned by your GitHub account, independent of the menu filter. Stars report net increases between checks. Private repositories require the repo token scope."),
+            label("Favorite repositories"), favoritesScroll,
+            hint("Separate repository names, wildcard patterns, or regular expressions with commas or newlines. Examples: koltyakov/* or ssnitko/varro-*"),
+            label("Desktop notifications"), alertOptions,
+            hint("Silent banners for your repositories. Use Filter mode > My repositories to also limit the menu count. Stars and forks report net changes between checks. Private repositories require the repo token scope."),
             notificationSettings,
             autoStart, buttons,
         ])
@@ -88,8 +111,8 @@ final class SettingsWindowController: NSWindowController {
             stack.topAnchor.constraint(equalTo: window.contentView!.topAnchor, constant: 24),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: window.contentView!.bottomAnchor, constant: -24),
             tokenField.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            favorites.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            favorites.heightAnchor.constraint(equalToConstant: 62),
+            favoritesScroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            favoritesScroll.heightAnchor.constraint(equalToConstant: 62),
             buttons.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
         window.contentView?.layoutSubtreeIfNeeded()
@@ -126,7 +149,7 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func saveSettings() {
         var updated = settings
-        updated.favoriteRepos = Settings.parseFavorites(favorites.stringValue)
+        updated.favoriteRepos = Settings.parseFavorites(favorites.string)
         if frequency.indexOfSelectedItem < intervals.count {
             updated.updateFrequency = intervals[frequency.indexOfSelectedItem]
         }
@@ -134,6 +157,9 @@ final class SettingsWindowController: NSWindowController {
         updated.notifyStars = notifyStars.state == .on
         updated.notifyIssues = notifyIssues.state == .on
         updated.notifyIssueComments = notifyIssueComments.state == .on
+        updated.notifyForks = notifyForks.state == .on
+        updated.notifyPullRequests = notifyPullRequests.state == .on
+        updated.notifyPullRequestComments = notifyPullRequestComments.state == .on
         do {
             try updated.validate()
             try onSave(updated, tokenField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))

@@ -1,16 +1,18 @@
 import Foundation
 import GitHubNotifyCore
+import os
 
 @MainActor
 final class RepositoryActivityMonitor {
     private let client = GitHubClient()
     private let store = RepositoryActivityStore()
     private let notifications = NativeNotifications()
+    private let logger = Logger(subsystem: "com.koltyakov.github-notify", category: "RepositoryActivity")
     private var task: Task<Void, Never>?
 
     func stop() { task?.cancel() }
 
-    func start(token: String, settings: Settings, status: @escaping @MainActor (String) -> Void) {
+    func start(token: String, settings: Settings) {
         stop()
         task = Task { [weak self] in
             guard let self else { return }
@@ -18,14 +20,7 @@ final class RepositoryActivityMonitor {
                 var state = try self.store.load()
                 state?.configure(settings)
                 if let state { try self.store.save(state) }
-                guard settings.notifyStars || settings.notifyIssues || settings.notifyIssueComments else {
-                    status("Repository alerts are off")
-                    return
-                }
-                guard !token.isEmpty else {
-                    status("Repository alerts need a GitHub token")
-                    return
-                }
+                guard settings.hasRepositoryAlerts, !token.isEmpty else { return }
                 try await self.notifications.authorize()
                 try Task.checkCancellation()
                 var account: GitHubAccount?
@@ -38,7 +33,9 @@ final class RepositoryActivityMonitor {
                         if state?.accountID != account.id { state = RepositoryActivityState(accountID: account.id) }
                         let snapshot = try await self.client.repositoryActivity(
                             token: token, account: account, issuesSince: state?.issuesCheckedAt,
-                            commentsSince: state?.commentsCheckedAt, settings: settings
+                            commentsSince: state?.commentsCheckedAt,
+                            pullRequestsSince: state?.pullRequestsCheckedAt,
+                            pullRequestCommentsSince: state?.pullRequestCommentsCheckedAt, settings: settings
                         )
                         try Task.checkCancellation()
                         guard var updated = state else { return }
@@ -50,12 +47,11 @@ final class RepositoryActivityMonitor {
                             try Task.checkCancellation()
                             try await self.notifications.show(alert)
                         }
-                        status("Repository alerts are on")
                         delay = max(delay, snapshot.pollInterval)
                     } catch is CancellationError { return }
                     catch {
                         guard !Task.isCancelled else { return }
-                        status("Repository alerts: \(error.localizedDescription)")
+                        self.logger.error("Repository alert check failed: \(error.localizedDescription, privacy: .public)")
                         if let error = error as? GitHubError {
                             if error.isUnauthorized { return }
                             delay = max(delay, error.retryAfter ?? 60)
@@ -66,7 +62,7 @@ final class RepositoryActivityMonitor {
             } catch is CancellationError { return }
             catch {
                 guard !Task.isCancelled else { return }
-                status("Repository alerts: \(error.localizedDescription)")
+                self.logger.error("Repository alerts could not start: \(error.localizedDescription, privacy: .public)")
             }
         }
     }

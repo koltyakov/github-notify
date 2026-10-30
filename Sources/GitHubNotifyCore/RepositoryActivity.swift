@@ -3,15 +3,28 @@ import Foundation
 public struct GitHubAccount: Decodable, Sendable {
     public let id: Int
     public let login: String
+
+    public func owns(_ repository: String) -> Bool {
+        let parts = repository.split(separator: "/", omittingEmptySubsequences: false)
+        return !login.isEmpty && parts.count == 2 && !parts[1].isEmpty && parts[0].lowercased() == login.lowercased()
+    }
 }
 
 public struct OwnedRepository: Decodable, Sendable {
     public let id: Int
     public let fullName: String
     public let stargazersCount: Int
+    public let forksCount: Int?
+
+    public init(id: Int, fullName: String, stargazersCount: Int, forksCount: Int? = nil) {
+        self.id = id
+        self.fullName = fullName
+        self.stargazersCount = stargazersCount
+        self.forksCount = forksCount
+    }
 
     enum CodingKeys: String, CodingKey {
-        case id, fullName = "full_name", stargazersCount = "stargazers_count"
+        case id, fullName = "full_name", stargazersCount = "stargazers_count", forksCount = "forks_count"
     }
 }
 
@@ -54,8 +67,17 @@ public struct RepositoryIssueComment: Decodable, Sendable {
 }
 
 public struct IssueCommentActivity: Sendable {
+    public enum Kind: String, Sendable { case thread, review }
+
     public let issue: RepositoryIssue
     public let comment: RepositoryIssueComment
+    public let kind: Kind
+
+    public init(issue: RepositoryIssue, comment: RepositoryIssueComment, kind: Kind = .thread) {
+        self.issue = issue
+        self.comment = comment
+        self.kind = kind
+    }
 }
 
 public struct RepositoryActivitySnapshot: Sendable {
@@ -92,23 +114,40 @@ public struct RepositoryToast: Equatable, Sendable {
 public struct RepositoryActivityState: Codable, Sendable {
     public let accountID: Int
     private var starCounts: [String: Int]?
+    private var forkCounts: [String: Int]?
     public private(set) var issuesCheckedAt: Date?
     private var issuesStartedAt: Date?
     private var seenIssues: [String: Date] = [:]
-    private var commentState: CommentState?
+    private var commentState: ActivityState?
+    private var pullRequestState: ActivityState?
+    private var pullRequestCommentState: ActivityState?
     public var commentsCheckedAt: Date? { commentState?.checkedAt }
+    public var pullRequestsCheckedAt: Date? { pullRequestState?.checkedAt }
+    public var pullRequestCommentsCheckedAt: Date? { pullRequestCommentState?.checkedAt }
 
-    // Optional so activity files from versions without comment alerts still decode.
-    private struct CommentState: Codable, Sendable {
+    // New category baselines are optional so older activity files still decode.
+    private struct ActivityState: Codable, Sendable {
         let startedAt: Date
         var checkedAt: Date
         var seen: [String: Date] = [:]
+
+        func accepts(_ id: String, createdAt: Date) -> Bool {
+            createdAt >= startedAt && createdAt >= checkedAt.addingTimeInterval(-120) && seen[id] == nil
+        }
+
+        mutating func finish(at date: Date) {
+            seen = seen.filter { $0.value >= date.addingTimeInterval(-120) }
+            checkedAt = date
+        }
     }
 
     public init(accountID: Int) { self.accountID = accountID }
 
     public mutating func configure(_ settings: Settings) {
         if !settings.notifyStars { starCounts = nil }
+        if !settings.notifyForks { forkCounts = nil }
+        if !settings.notifyPullRequests { pullRequestState = nil }
+        if !settings.notifyPullRequestComments { pullRequestCommentState = nil }
         if !settings.notifyIssues {
             issuesStartedAt = nil
             issuesCheckedAt = nil
@@ -122,21 +161,41 @@ public struct RepositoryActivityState: Codable, Sendable {
         var alerts: [RepositoryToast] = []
         if settings.notifyStars {
             var updated: [String: Int] = [:]
-            for repository in snapshot.repositories {
+            for repository in snapshot.repositories where snapshot.account.owns(repository.fullName) {
                 let key = String(repository.id)
                 guard updated[key] == nil else { continue }
                 updated[key] = repository.stargazersCount
-                guard let previous = starCounts?[key], repository.stargazersCount > previous,
+                guard let previous = starCounts?[key], repository.stargazersCount != previous,
                       let url = Self.repositoryURL(repository.fullName)?.appendingPathComponent("stargazers") else { continue }
                 let increase = repository.stargazersCount - previous
+                let title = increase > 0
+                    ? (increase == 1 ? "New star" : "\(increase) new stars")
+                    : (increase == -1 ? "Star removed" : "\(-increase) stars removed")
                 alerts.append(RepositoryToast(
                     id: "stars-\(key)-\(snapshot.checkedAt.timeIntervalSince1970)", repository: repository.fullName,
-                    title: increase == 1 ? "New star" : "\(increase) new stars",
+                    title: title,
                     body: "\(repository.stargazersCount) total stars", url: url
                 ))
             }
             starCounts = updated
         } else { starCounts = nil }
+
+        if settings.notifyForks {
+            var updated: [String: Int] = [:]
+            for repository in snapshot.repositories where snapshot.account.owns(repository.fullName) {
+                let key = String(repository.id)
+                guard updated[key] == nil, let count = repository.forksCount else { continue }
+                updated[key] = count
+                guard let previous = forkCounts?[key], count > previous,
+                      let url = Self.repositoryURL(repository.fullName)?.appendingPathComponent("forks") else { continue }
+                let increase = count - previous
+                alerts.append(RepositoryToast(
+                    id: "forks-\(key)-\(snapshot.checkedAt.timeIntervalSince1970)", repository: repository.fullName,
+                    title: increase == 1 ? "New fork" : "\(increase) new forks", body: "\(count) total forks", url: url
+                ))
+            }
+            forkCounts = updated
+        } else { forkCounts = nil }
 
         if settings.notifyIssues {
             if let startedAt = issuesStartedAt {
@@ -144,7 +203,7 @@ public struct RepositoryActivityState: Codable, Sendable {
                     let name = issue.repository.fullName
                     guard !issue.isPullRequest, issue.createdAt >= startedAt,
                           issue.createdAt >= (issuesCheckedAt ?? startedAt).addingTimeInterval(-120),
-                          name.split(separator: "/").first?.lowercased() == snapshot.account.login.lowercased(),
+                          snapshot.account.owns(name),
                           seenIssues[String(issue.id)] == nil,
                           let url = Self.repositoryURL(name)?.appendingPathComponent("issues/\(issue.number)") else { continue }
                     seenIssues[String(issue.id)] = issue.createdAt
@@ -164,36 +223,64 @@ public struct RepositoryActivityState: Codable, Sendable {
             seenIssues = [:]
         }
 
-        if settings.notifyIssueComments {
-            if var state = commentState {
-                for activity in snapshot.comments.sorted(by: { $0.comment.id < $1.comment.id }) {
-                    let issue = activity.issue
-                    let comment = activity.comment
+        if settings.notifyPullRequests {
+            if var state = pullRequestState {
+                for issue in snapshot.issues.sorted(by: { $0.id < $1.id }) where issue.isPullRequest {
+                    let key = String(issue.id)
                     let name = issue.repository.fullName
-                    guard !issue.isPullRequest, issue.number > 0, comment.id > 0,
-                          comment.createdAt >= state.startedAt,
-                          comment.createdAt >= state.checkedAt.addingTimeInterval(-120),
-                          name.split(separator: "/").first?.lowercased() == snapshot.account.login.lowercased(),
-                          state.seen[String(comment.id)] == nil,
-                          let issueURL = Self.repositoryURL(name)?.appendingPathComponent("issues/\(issue.number)"),
-                          var components = URLComponents(url: issueURL, resolvingAgainstBaseURL: false) else { continue }
-                    components.fragment = "issuecomment-\(comment.id)"
-                    guard let url = components.url else { continue }
-                    state.seen[String(comment.id)] = comment.createdAt
-                    let text = (comment.body ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
-                    let preview = text.isEmpty ? "Comment added" : String(text.prefix(240))
+                    guard snapshot.account.owns(name), issue.number > 0, state.accepts(key, createdAt: issue.createdAt),
+                          let url = Self.repositoryURL(name)?.appendingPathComponent("pull/\(issue.number)") else { continue }
+                    state.seen[key] = issue.createdAt
                     alerts.append(RepositoryToast(
-                        id: "comment-\(comment.id)", repository: name, title: "New comment on #\(issue.number)",
-                        body: comment.user.map { "\($0.login): \(preview)" } ?? preview, url: url
+                        id: "pull-request-\(issue.id)", repository: name, title: "New pull request #\(issue.number)",
+                        body: issue.user.map { "\($0.login): \(issue.title)" } ?? issue.title, url: url
                     ))
                 }
-                state.seen = state.seen.filter { $0.value >= snapshot.checkedAt.addingTimeInterval(-120) }
-                state.checkedAt = snapshot.checkedAt
-                commentState = state
-            } else {
-                commentState = CommentState(startedAt: snapshot.checkedAt, checkedAt: snapshot.checkedAt)
-            }
+                state.finish(at: snapshot.checkedAt)
+                pullRequestState = state
+            } else { pullRequestState = ActivityState(startedAt: snapshot.checkedAt, checkedAt: snapshot.checkedAt) }
+        } else { pullRequestState = nil }
+
+        if settings.notifyIssueComments {
+            alerts += Self.commentAlerts(for: snapshot, state: &commentState, pullRequest: false)
         } else { commentState = nil }
+        if settings.notifyPullRequestComments {
+            alerts += Self.commentAlerts(for: snapshot, state: &pullRequestCommentState, pullRequest: true)
+        } else { pullRequestCommentState = nil }
+        return alerts
+    }
+
+    private static func commentAlerts(
+        for snapshot: RepositoryActivitySnapshot, state baseline: inout ActivityState?, pullRequest: Bool
+    ) -> [RepositoryToast] {
+        guard var state = baseline else {
+            baseline = ActivityState(startedAt: snapshot.checkedAt, checkedAt: snapshot.checkedAt)
+            return []
+        }
+        var alerts: [RepositoryToast] = []
+        for activity in snapshot.comments.sorted(by: { $0.comment.id < $1.comment.id }) {
+            let issue = activity.issue
+            let comment = activity.comment
+            let name = issue.repository.fullName
+            let key = activity.kind == .review ? "review-\(comment.id)" : String(comment.id)
+            guard issue.isPullRequest == pullRequest, pullRequest || activity.kind == .thread,
+                  issue.number > 0, comment.id > 0, snapshot.account.owns(name),
+                  state.accepts(key, createdAt: comment.createdAt),
+                  let issueURL = repositoryURL(name)?.appendingPathComponent("\(pullRequest ? "pull" : "issues")/\(issue.number)"),
+                  var components = URLComponents(url: issueURL, resolvingAgainstBaseURL: false) else { continue }
+            components.fragment = activity.kind == .review ? "discussion_r\(comment.id)" : "issuecomment-\(comment.id)"
+            guard let url = components.url else { continue }
+            state.seen[key] = comment.createdAt
+            let text = (comment.body ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            let preview = text.isEmpty ? "Comment added" : String(text.prefix(240))
+            alerts.append(RepositoryToast(
+                id: "\(pullRequest ? "pull-comment" : "comment")-\(key)", repository: name,
+                title: pullRequest ? "New comment on pull request #\(issue.number)" : "New comment on #\(issue.number)",
+                body: comment.user.map { "\($0.login): \(preview)" } ?? preview, url: url
+            ))
+        }
+        state.finish(at: snapshot.checkedAt)
+        baseline = state
         return alerts
     }
 

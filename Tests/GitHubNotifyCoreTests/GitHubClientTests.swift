@@ -43,6 +43,17 @@ final class GitHubClientTests: XCTestCase {
         XCTAssertEqual(requests[0].value(forHTTPHeaderField: "X-GitHub-Api-Version"), "2022-11-28")
     }
 
+    func testNotificationSubjectsAreDecodedWithoutAdditionalRequests() async throws {
+        let transport = MockTransport([.init(body: #"[{"id":"1","repository":{"full_name":"owner/repo"},"subject":{"title":"A bug","type":"Issue","url":"https://api.github.com/repos/owner/repo/issues/42"}},{"id":"2","repository":{"full_name":"owner/repo"},"subject":{"title":"A fix","type":"PullRequest","url":"https://api.github.com/repos/owner/repo/pulls/7"}}]"#)])
+        let snapshot = try await GitHubClient(transport: transport).notifications(token: "test")
+        XCTAssertEqual(snapshot.notifications.map(\.title), ["A bug", "A fix"])
+        XCTAssertEqual(snapshot.notifications.map(\.browserURL?.absoluteString), [
+            "https://github.com/owner/repo/issues/42", "https://github.com/owner/repo/pull/7",
+        ])
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 1)
+    }
+
     func testPaginationNeverSendsTokenToAnotherOrigin() async throws {
         for target in ["https://example.com/notifications?page=2", "http://api.github.com/notifications?page=2", "https://api.github.com/repos", "https://api.github.com:444/notifications"] {
             let transport = MockTransport([.init(headers: ["Link": "<\(target)>; rel=\"next\""])])
@@ -163,6 +174,7 @@ final class GitHubClientTests: XCTestCase {
         ])
         var settings = Settings()
         settings.notifyStars = false
+        settings.notifyForks = false
         let snapshot = try await GitHubClient(transport: transport).repositoryActivity(
             token: "test", account: GitHubAccount(id: 1, login: "owner"),
             issuesSince: Date(timeIntervalSince1970: 1_700_000_000), settings: settings
@@ -198,8 +210,11 @@ final class GitHubClientTests: XCTestCase {
         let transport = MockTransport([])
         var settings = Settings()
         settings.notifyStars = false
+        settings.notifyForks = false
         settings.notifyIssues = false
         settings.notifyIssueComments = false
+        settings.notifyPullRequests = false
+        settings.notifyPullRequestComments = false
         _ = try await GitHubClient(transport: transport).repositoryActivity(
             token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: Date(), settings: settings
         )
@@ -216,6 +231,7 @@ final class GitHubClientTests: XCTestCase {
         ])
         var settings = Settings()
         settings.notifyStars = false
+        settings.notifyForks = false
         settings.notifyIssues = false
         let result = try await GitHubClient(transport: transport).repositoryActivity(
             token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil,
@@ -239,6 +255,7 @@ final class GitHubClientTests: XCTestCase {
         ])
         var settings = Settings()
         settings.notifyStars = false
+        settings.notifyForks = false
         do {
             _ = try await GitHubClient(transport: transport).repositoryActivity(
                 token: "secret", account: GitHubAccount(id: 1, login: "owner"), issuesSince: Date(),
@@ -248,5 +265,66 @@ final class GitHubClientTests: XCTestCase {
         } catch GitHubError.invalidResponse {} catch { XCTFail("Unexpected error: \(error)") }
         let requests = await transport.requests
         XCTAssertEqual(requests.count, 2)
+    }
+
+    func testForkOnlyPollingFetchesOwnedRepositoryCounts() async throws {
+        let transport = MockTransport([.init(body: #"[{"id":10,"full_name":"owner/repo","stargazers_count":5,"forks_count":3},{"id":20,"full_name":"other/repo","stargazers_count":8,"forks_count":4}]"#)])
+        var settings = Settings()
+        settings.notifyStars = false
+        let result = try await GitHubClient(transport: transport).repositoryActivity(
+            token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil, settings: settings
+        )
+        XCTAssertEqual(result.repositories.count, 1)
+        XCTAssertEqual(result.repositories.first?.forksCount, 3)
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 1)
+    }
+
+    func testPullRequestConversationAndInlineCommentsUseTheirRespectiveEndpoints() async throws {
+        let transport = MockTransport([
+            .init(body: #"[{"id":100,"number":3,"title":"A fix","comments":1,"created_at":"2020-01-01T00:00:00Z","repository":{"full_name":"owner/repo"},"pull_request":{},"user":null}]"#),
+            .init(body: #"[{"id":200,"body":"Thanks","created_at":"2023-11-14T22:13:21Z","user":null}]"#),
+            .init(headers: ["X-Poll-Interval": "180", "Link": "<https://api.github.com/repos/owner/repo/pulls/3/comments?page=2>; rel=\"next\""],
+                  body: #"[{"id":200,"body":"Change this line","created_at":"2023-11-14T22:13:21Z","user":null}]"#),
+            .init(body: "[]"),
+        ])
+        var settings = Settings()
+        settings.notifyStars = false
+        settings.notifyForks = false
+        settings.notifyIssueComments = false
+        let since = Date(timeIntervalSince1970: 1_700_000_000)
+        let result = try await GitHubClient(transport: transport).repositoryActivity(
+            token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil,
+            pullRequestsSince: since, pullRequestCommentsSince: since, settings: settings
+        )
+        XCTAssertEqual(result.comments.map(\.kind), [.thread, .review])
+        XCTAssertEqual(result.pollInterval, 180)
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 4)
+        XCTAssertEqual(requests[1].url?.path, "/repos/owner/repo/issues/3/comments")
+        XCTAssertEqual(requests[2].url?.path, "/repos/owner/repo/pulls/3/comments")
+        XCTAssertEqual(requests[3].value(forHTTPHeaderField: "Authorization"), "Bearer test")
+        let query = URLComponents(url: requests[0].url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertTrue(query.contains(URLQueryItem(name: "pulls", value: "true")))
+    }
+
+    func testInlineCommentsAreCheckedEvenWhenPullRequestHasNoConversationComments() async throws {
+        let transport = MockTransport([
+            .init(body: #"[{"id":100,"number":3,"title":"A fix","comments":0,"created_at":"2020-01-01T00:00:00Z","repository":{"full_name":"owner/repo"},"pull_request":{},"user":null}]"#),
+            .init(headers: ["Link": "<https://example.com/comments?page=2>; rel=\"next\""]),
+        ])
+        var settings = Settings()
+        settings.notifyStars = false
+        settings.notifyForks = false
+        do {
+            _ = try await GitHubClient(transport: transport).repositoryActivity(
+                token: "secret", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil,
+                pullRequestCommentsSince: Date(), settings: settings
+            )
+            XCTFail("Should reject foreign inline-comment pagination")
+        } catch GitHubError.invalidResponse {} catch { XCTFail("Unexpected error: \(error)") }
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests[1].url?.path, "/repos/owner/repo/pulls/3/comments")
     }
 }

@@ -9,10 +9,12 @@ The original Go app lives in [`legacy/`](legacy/) and supports Windows and Linux
 Requires macOS 13 or later. Builds target the current Mac's architecture by default. Apple Silicon builds require no Rosetta.
 
 - Unread counts and a per-repository tooltip in the menu bar.
-- Favorite repositories using names or regular expressions, plus a favorites-only filter.
+- Left-click for unread notifications grouped by repository; click a notification to open it on GitHub. Right-click or Control-click for settings, filters, and other controls.
+- Favorite repositories using names, wildcard patterns, or regular expressions, plus a favorites-only filter.
+- A **My repositories** filter for unread counts and marking only your own repositories as read.
 - Mark the displayed repositories as read, without clearing notifications newer than the last check.
 - Native settings window, token storage in Keychain, and macOS login items.
-- Silent, clickable macOS banners for new stars, issues, and issue comments on repositories owned by your GitHub account.
+- Silent, clickable macOS banners for stars, unstars, forks, new issues and pull requests, and comments on both.
 - Asynchronous network requests with pagination, GitHub polling hints, and rate-limit delays.
 
 ### Build and run
@@ -24,7 +26,7 @@ make app
 open "dist/GitHub Notify.app"
 ```
 
-For everyday use, copy `dist/GitHub Notify.app` to `/Applications` before enabling launch at login. Use the menu bar's Settings item to enter a **classic personal access token** with the `notifications` scope. The Get token item opens GitHub's token creation page.
+For everyday use, copy `dist/GitHub Notify.app` to `/Applications` before enabling launch at login. Use the menu bar's Settings item to enter a **classic personal access token** with the `notifications` and `repo` scopes. The Get token and Create token on GitHub buttons open GitHub's token creation page with both scopes selected.
 
 Or build and install directly:
 
@@ -58,23 +60,42 @@ The old encrypted token is not imported. Enter it once in Settings to store it i
 
 Quit the old Go app before opening the native version. If you enabled launch at login in the old app, disable it there first, or remove its `github-notify` entry from `~/Library/LaunchAgents/`. Then enable launch at login in the native app. The app uses macOS's actual login-item status instead of automatically registering an old saved preference. macOS may ask you to approve the new item under System Settings > General > Login Items.
 
-Favorite patterns use Foundation regular expressions instead of Go's RE2 syntax. Common patterns such as `^owner/` and `^owner/repo$` work unchanged. GitHub's minimum polling interval overrides a faster saved interval.
+Enter favorites on separate lines or separate them with commas. Wildcard patterns such as `koltyakov/*` and `ssnitko/varro-*` match whole repository names, with `*` matching any text. Explicit regular expressions such as `^owner/`, `^owner/repo$`, and `^owner/.*` still work, using Foundation regular expressions instead of Go's RE2 syntax. GitHub's minimum polling interval overrides a faster saved interval.
 
 ### Repository alerts
 
-New star, issue, and issue-comment banners are enabled by default and can be turned off separately in Settings. Allow GitHub Notify when macOS requests notification permission. If permission was denied, use **Open notification settings** in the app's Settings. Banners require the `.app` bundle, not the bare executable from `swift run`.
+Choose **Filter mode > My repositories** in the menu to restrict unread counts, the tooltip, and **Mark as read** to repositories owned by the token's personal GitHub account. All-notifications and favorites-only modes remain available. The app identifies the account from the token, so no username or favorite pattern is needed. Stars and forks are activity alerts, not unread GitHub threads, so they do not add to the menu count.
+
+Left-click the menu-bar icon to see unread GitHub notifications, grouped by repository and limited by the same filter as the count. Issue and pull request entries open their corresponding GitHub pages. Long titles are shortened in the dropdown; hover to see the full title. Right-click or Control-click the icon to access **Filter mode**, **Mark as read**, and the existing controls. Opening the dropdown uses the last successful check without additional API requests.
+
+Desktop alerts always cover only your own repositories, regardless of the selected menu filter. Settings has separate toggles for stars and unstars, forks, new issues, new pull requests, issue comments, and pull request comments. All are enabled by default. Allow GitHub Notify when macOS requests notification permission. If permission was denied, use **Open notification settings** in the app's Settings. Banners require the `.app` bundle, not the bare executable from `swift run`.
 
 To send a test without accessing GitHub or changing saved baselines, run `"dist/GitHub Notify.app/Contents/MacOS/github-notify" --test-notification` after building the app. This works even if another instance is running and reports whether Notification Center confirms delivery.
 
-Alerts cover repositories owned by the token's personal GitHub account, regardless of the menu's favorites filter. Organization-owned repositories are not included. A classic token with `notifications` scope covers unread notifications and public repository activity. Add `repo` scope to include private repository activity.
+Alerts cover repositories owned by the token's personal GitHub account, regardless of the menu's favorites filter. Organization-owned repositories are not included. Use a classic token with `notifications` and `repo` scopes for full repository-alert support, including private repositories. The `repo` scope grants broad repository access; this app only reads activity and marks notifications as read. If you created a token using the older notifications-only link, update its scopes on GitHub or create a new token and save it in Settings. Updating the app does not change existing token permissions.
 
-The first successful check establishes a silent baseline. Later checks run at most once per minute automatically, or slower if configured or requested by GitHub. Star banners report net increases in each repository's star count, not individual stargazers. Stars added and removed between checks can cancel out. Issue banners report newly created issues, including issues already closed by the time of the check. Comment banners report new comments on existing or new issues, but not edits to old comments. Pull requests and their comments are excluded. Clicking a banner opens the repository's stargazers, the issue, or the specific comment on GitHub. Focus modes and macOS notification settings can suppress banners.
+The first successful check establishes a silent baseline. Later checks run at most once per minute automatically, or slower if configured or requested by GitHub. Star banners report net increases and decreases in each repository's star count, not individual stargazers. Fork banners report net increases in fork counts. Additions and removals between checks can cancel out.
 
-Baselines are stored in `~/Library/Application Support/github-notify/activity.json` to avoid repeats after restarting. Turning an alert type off and back on establishes a fresh baseline for that type. Repository-alert errors appear separately in the menu and do not interrupt unread-notification polling.
+Issue and pull request banners report newly created threads, including threads already closed by the time of the check. Comment banners cover conversations on issues and pull requests, plus inline pull request review comments. Edits to old comments do not trigger alerts. Clicking a banner opens the stargazers, forks, issue, pull request, or specific comment on GitHub. Focus modes and macOS notification settings can suppress banners.
+
+Baselines are stored in `~/Library/Application Support/github-notify/activity.json` to avoid repeats after restarting. Turning an alert type off and back on establishes a fresh baseline for that type. Repository alerts run without a status row in the menu. Errors go to the macOS system log under the `com.koltyakov.github-notify` subsystem and `RepositoryActivity` category, without interrupting unread-notification polling.
 
 ### Signing and distribution
 
-Local builds and the default release workflow use ad-hoc signing. They are **not notarized**; Gatekeeper may block a downloaded build. For distribution outside your own machine, sign with your Developer ID identity and notarize it through Apple:
+By default, builds without a configured signing identity use ad-hoc signing. Its identity changes with the executable, which can make Keychain ask for access again after each rebuild, even after **Always Allow**. For local development, configure a reusable app-specific signing identity once:
+
+```sh
+make setup-signing
+make install
+```
+
+Setup creates a self-signed certificate trusted for code signing only, with its private key in a separate Keychain under `~/Library/Application Support/github-notify/signing/`. Its generated unlock password is stored in that private directory with owner-only permissions. The signing Keychain is appended to the search list without removing existing entries or changing the default Keychain. The login Keychain and GitHub-token access rules are not changed. Local builds automatically reuse this identity. Do not copy the signing directory into the repository or share it.
+
+The first launch after switching from ad-hoc signing may still require one **Always Allow** approval for the GitHub token. Use the installed copy consistently. Later builds signed with the same certificate keep the same designated requirement, so the approval can survive updates. Do not enable "allow all applications" on the token to suppress prompts.
+
+`make test-signing` checks signing selection and, when local signing is configured, verifies that two different test builds retain the same certificate-bound requirement. It never runs the app or reads the GitHub token.
+
+Self-signed and ad-hoc builds are **not notarized** and are not a substitute for Developer ID distribution. Gatekeeper may block a downloaded build. CI still uses ad-hoc signing unless an identity is configured. To explicitly build ad-hoc, use `CODESIGN_IDENTITY=- make app`. For distribution outside your own machine, override the local identity with your Developer ID identity and notarize it through Apple:
 
 ```sh
 CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" make version=1.2.3 dmg
@@ -96,3 +117,7 @@ See [`legacy/README.md`](legacy/README.md) for the Go app's prerequisites and bu
 | `assets/` | Shared app icon, screenshots, and original tray artwork |
 | `packaging/`, `scripts/` | macOS bundle metadata and build script |
 | `legacy/` | Windows/Linux Go implementation and its build setup |
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

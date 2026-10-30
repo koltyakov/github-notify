@@ -11,6 +11,9 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(settings.notifyStars)
         XCTAssertTrue(settings.notifyIssues)
         XCTAssertTrue(settings.notifyIssueComments)
+        XCTAssertTrue(settings.notifyForks)
+        XCTAssertTrue(settings.notifyPullRequests)
+        XCTAssertTrue(settings.notifyPullRequestComments)
     }
 
     func testLegacySettingsKeepPreferencesButNeverPersistToken() throws {
@@ -51,6 +54,13 @@ final class SettingsTests: XCTestCase {
         XCTAssertThrowsError(try settings.validate())
     }
 
+    func testWildcardFavoritesAreParsedAndValidated() throws {
+        var settings = Settings()
+        settings.favoriteRepos = Settings.parseFavorites("koltyakov/*\nssnitko/varro-*")
+        XCTAssertEqual(settings.favoriteRepos, ["koltyakov/*", "ssnitko/varro-*"])
+        XCTAssertNoThrow(try settings.validate())
+    }
+
     func testSettingsRoundTripAndPrivatePermissions() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -60,6 +70,11 @@ final class SettingsTests: XCTestCase {
         settings.notifyStars = false
         settings.notifyIssues = false
         settings.notifyIssueComments = false
+        settings.notifyForks = false
+        settings.notifyPullRequests = false
+        settings.notifyPullRequestComments = false
+        settings.filtersMode = .owned
+        XCTAssertFalse(settings.hasRepositoryAlerts)
         try store.save(settings)
         XCTAssertEqual(try store.load(), settings)
         let attributes = try FileManager.default.attributesOfItem(atPath: store.url.path)

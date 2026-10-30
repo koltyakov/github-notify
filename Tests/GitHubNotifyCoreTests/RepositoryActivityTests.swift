@@ -53,7 +53,7 @@ final class RepositoryActivityTests: XCTestCase {
         XCTAssertTrue(state.alerts(for: snapshot(500, after: 60), settings: Settings()).isEmpty)
     }
 
-    func testStarsReportOnlyNetIncreasesAndLinkToStargazers() throws {
+    func testStarsReportNetIncreasesAndDecreasesAndLinkToStargazers() throws {
         var state = RepositoryActivityState(accountID: account.id)
         _ = state.alerts(for: snapshot(), settings: Settings())
         let toast = try XCTUnwrap(state.alerts(for: snapshot(11, after: 60), settings: Settings()).first)
@@ -61,7 +61,7 @@ final class RepositoryActivityTests: XCTestCase {
         XCTAssertEqual(toast.title, "New star")
         XCTAssertEqual(toast.body, "11 total stars")
         XCTAssertEqual(toast.url.absoluteString, "https://github.com/owner/repo/stargazers")
-        XCTAssertTrue(state.alerts(for: snapshot(9, after: 120), settings: Settings()).isEmpty)
+        XCTAssertEqual(state.alerts(for: snapshot(9, after: 120), settings: Settings()).first?.title, "2 stars removed")
         XCTAssertEqual(state.alerts(for: snapshot(12, after: 180), settings: Settings()).first?.title, "3 new stars")
     }
 
@@ -85,12 +85,14 @@ final class RepositoryActivityTests: XCTestCase {
             issue(), issue(101, pullRequest: true), issue(102, repository: "other/repo"),
             issue(103, after: -1), issue(),
         ]
-        let alerts = state.alerts(for: snapshot(issues: issues, after: 60), settings: Settings())
+        var settings = Settings()
+        settings.notifyPullRequests = false
+        let alerts = state.alerts(for: snapshot(issues: issues, after: 60), settings: settings)
         XCTAssertEqual(alerts.count, 1)
         XCTAssertEqual(alerts.first?.title, "New issue #100")
         XCTAssertEqual(alerts.first?.body, "contributor: Something broke")
         XCTAssertEqual(alerts.first?.url.absoluteString, "https://github.com/owner/repo/issues/100")
-        XCTAssertTrue(state.alerts(for: snapshot(issues: issues, after: 120), settings: Settings()).isEmpty)
+        XCTAssertTrue(state.alerts(for: snapshot(issues: issues, after: 120), settings: settings).isEmpty)
     }
 
     func testDelayedIssueWithinOverlapIsDeliveredOnce() throws {
@@ -185,7 +187,9 @@ final class RepositoryActivityTests: XCTestCase {
             comment(201, issue: issue(repository: "other/repo")),
             comment(202, body: String(repeating: "x", count: 1000)),
         ]
-        let alerts = state.alerts(for: snapshot(comments: comments, after: 60), settings: Settings())
+        var settings = Settings()
+        settings.notifyPullRequestComments = false
+        let alerts = state.alerts(for: snapshot(comments: comments, after: 60), settings: settings)
         XCTAssertEqual(alerts.count, 1)
         XCTAssertEqual(alerts.first?.body.count, "contributor: ".count + 240)
     }
@@ -212,5 +216,74 @@ final class RepositoryActivityTests: XCTestCase {
         XCTAssertNil(state.commentsCheckedAt)
         XCTAssertTrue(state.alerts(for: snapshot(comments: [try comment()], after: 60), settings: Settings()).isEmpty)
         XCTAssertEqual(state.commentsCheckedAt, start.addingTimeInterval(60))
+    }
+
+    func testForkBaselinesAndNetIncreasesPersistAcrossRestart() throws {
+        func forkSnapshot(_ count: Int, after seconds: Double) -> RepositoryActivitySnapshot {
+            RepositoryActivitySnapshot(
+                account: account, repositories: [OwnedRepository(id: 10, fullName: "owner/repo", stargazersCount: 10, forksCount: count)],
+                issues: [], checkedAt: start.addingTimeInterval(seconds), pollInterval: 60
+            )
+        }
+        var state = RepositoryActivityState(accountID: account.id)
+        XCTAssertTrue(state.alerts(for: forkSnapshot(5, after: 0), settings: Settings()).isEmpty)
+        let alerts = state.alerts(for: forkSnapshot(7, after: 60), settings: Settings())
+        XCTAssertEqual(alerts.first?.title, "2 new forks")
+        XCTAssertEqual(alerts.first?.url.absoluteString, "https://github.com/owner/repo/forks")
+        var restored = try JSONDecoder().decode(RepositoryActivityState.self, from: JSONEncoder().encode(state))
+        XCTAssertTrue(restored.alerts(for: forkSnapshot(7, after: 120), settings: Settings()).isEmpty)
+        XCTAssertTrue(restored.alerts(for: forkSnapshot(6, after: 180), settings: Settings()).isEmpty)
+        XCTAssertEqual(restored.alerts(for: forkSnapshot(7, after: 240), settings: Settings()).first?.title, "New fork")
+    }
+
+    func testPullRequestsAndThreadAndReviewCommentsHaveSeparateIdentitiesAndLinks() throws {
+        var state = RepositoryActivityState(accountID: account.id)
+        _ = state.alerts(for: snapshot(), settings: Settings())
+        let pull = try issue(101, pullRequest: true)
+        let thread = try comment(200, issue: pull)
+        let review = IssueCommentActivity(issue: pull, comment: thread.comment, kind: .review)
+        let next = snapshot(issues: [pull, pull], comments: [thread, review, thread], after: 60)
+        let alerts = state.alerts(for: next, settings: Settings())
+        XCTAssertEqual(alerts.count, 3)
+        XCTAssertEqual(alerts[0].title, "New pull request #101")
+        XCTAssertEqual(alerts[0].url.absoluteString, "https://github.com/owner/repo/pull/101")
+        XCTAssertEqual(Set(alerts.dropFirst().map(\.url.absoluteString)), [
+            "https://github.com/owner/repo/pull/101#issuecomment-200",
+            "https://github.com/owner/repo/pull/101#discussion_r200",
+        ])
+        XCTAssertEqual(Set(alerts.map(\.id)).count, 3)
+        var restored = try JSONDecoder().decode(RepositoryActivityState.self, from: JSONEncoder().encode(state))
+        XCTAssertTrue(restored.alerts(for: next, settings: Settings()).isEmpty)
+    }
+
+    func testNewCategoriesRebaselineWithoutReplayingOldActivity() throws {
+        let legacy = Data(#"{"accountID":1,"starCounts":{"10":10},"issuesCheckedAt":721692800,"issuesStartedAt":721692800,"seenIssues":{}}"#.utf8)
+        var state = try JSONDecoder().decode(RepositoryActivityState.self, from: legacy)
+        let pull = try issue(101, pullRequest: true)
+        let next = snapshot(issues: [pull], comments: [try comment(issue: pull)], after: 60)
+        XCTAssertTrue(state.alerts(for: next, settings: Settings()).isEmpty)
+        var disabled = Settings()
+        disabled.notifyForks = false
+        disabled.notifyPullRequests = false
+        disabled.notifyPullRequestComments = false
+        state.configure(disabled)
+        XCTAssertNil(state.pullRequestsCheckedAt)
+        XCTAssertNil(state.pullRequestCommentsCheckedAt)
+        XCTAssertTrue(state.alerts(for: next, settings: Settings()).isEmpty)
+    }
+
+    func testAllAlertTypesRejectRepositoriesOwnedBySomeoneElse() throws {
+        var state = RepositoryActivityState(accountID: account.id)
+        let foreign = try issue(101, repository: "other/repo", pullRequest: true)
+        let next = RepositoryActivitySnapshot(
+            account: account, repositories: [OwnedRepository(id: 20, fullName: "other/repo", stargazersCount: 10, forksCount: 10)],
+            issues: [foreign], comments: [try comment(issue: foreign)], checkedAt: start, pollInterval: 60
+        )
+        _ = state.alerts(for: next, settings: Settings())
+        let changed = RepositoryActivitySnapshot(
+            account: account, repositories: [OwnedRepository(id: 20, fullName: "other/repo", stargazersCount: 11, forksCount: 11)],
+            issues: [foreign], comments: next.comments, checkedAt: start.addingTimeInterval(60), pollInterval: 60
+        )
+        XCTAssertTrue(state.alerts(for: changed, settings: Settings()).isEmpty)
     }
 }

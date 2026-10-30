@@ -4,7 +4,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 version="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
 arch="${ARCH:-arm64}"
-identity="${CODESIGN_IDENTITY:--}"
 
 if [[ ! "$version" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
     echo "VERSION must contain only letters, numbers, dots, underscores, plus signs, or hyphens." >&2
@@ -55,12 +54,7 @@ for size in 16 32 128 256 512; do
 done
 /usr/bin/iconutil -c icns "$iconset" -o "$app/Contents/Resources/AppIcon.icns"
 
-sign_options=(--force --sign "$identity")
-if [[ "$identity" != "-" ]]; then
-    sign_options+=(--options runtime --timestamp)
-fi
-/usr/bin/codesign "${sign_options[@]}" "$app"
-/usr/bin/codesign --verify --strict "$app"
+/bin/bash scripts/sign-app.sh "$app"
 /usr/bin/ditto "$app" "dist/staging/GitHub Notify.app"
 ln -sfn /Applications dist/staging/Applications
 echo "Built $app $version for $arch"

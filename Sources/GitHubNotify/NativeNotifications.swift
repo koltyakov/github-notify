@@ -55,7 +55,7 @@ final class NativeNotifications: NSObject, UNUserNotificationCenterDelegate {
         let content = UNMutableNotificationContent()
         content.title = "GitHub Notify"
         content.subtitle = "Test notification"
-        content.body = "This is a test of repository star, issue, and comment alerts."
+        content.body = "This is a test of stars, forks, issues, pull requests, and comments on your repositories."
         content.userInfo = ["url": "https://github.com/koltyakov/github-notify"]
         content.sound = nil
         try await submit(id: id, content: content)

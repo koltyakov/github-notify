@@ -113,50 +113,63 @@ public struct GitHubClient: Sendable {
     }
 
     public func repositoryActivity(
-        token: String, account: GitHubAccount, issuesSince: Date?, commentsSince: Date? = nil, settings: Settings
+        token: String, account: GitHubAccount, issuesSince: Date?, commentsSince: Date? = nil,
+        pullRequestsSince: Date? = nil, pullRequestCommentsSince: Date? = nil, settings: Settings
     ) async throws -> RepositoryActivitySnapshot {
         let checkedAt = Date()
         var repositories: [OwnedRepository] = []
         var issues: [RepositoryIssue] = []
         var comments: [IssueCommentActivity] = []
         var interval: TimeInterval = 60
-        if settings.notifyStars {
+        if settings.notifyStars || settings.notifyForks {
             let result: ([OwnedRepository], TimeInterval) = try await pages(
                 path: "user/repos", query: [
                     URLQueryItem(name: "affiliation", value: "owner"),
                     URLQueryItem(name: "sort", value: "full_name"),
                 ], token: token
             )
-            repositories = result.0
+            repositories = result.0.filter { account.owns($0.fullName) }
             interval = max(interval, result.1)
         }
-        let issueDates = [settings.notifyIssues ? issuesSince : nil, settings.notifyIssueComments ? commentsSince : nil]
-            .compactMap { $0 }
+        let issueDates = [
+            settings.notifyIssues ? issuesSince : nil, settings.notifyIssueComments ? commentsSince : nil,
+            settings.notifyPullRequests ? pullRequestsSince : nil,
+            settings.notifyPullRequestComments ? pullRequestCommentsSince : nil,
+        ].compactMap { $0 }
         if let since = issueDates.min() {
             let result: ([RepositoryIssue], TimeInterval) = try await pages(
                 path: "issues", query: [
                     URLQueryItem(name: "filter", value: "all"),
                     URLQueryItem(name: "state", value: "all"),
                     URLQueryItem(name: "owned", value: "true"),
-                    URLQueryItem(name: "pulls", value: "false"),
+                    URLQueryItem(name: "pulls", value: settings.notifyPullRequests || settings.notifyPullRequestComments ? "true" : "false"),
                     URLQueryItem(name: "since", value: ISO8601DateFormatter().string(from: since.addingTimeInterval(-120))),
                 ], token: token
             )
             issues = result.0
             interval = max(interval, result.1)
         }
-        if settings.notifyIssueComments, let commentsSince {
-            var visitedIssues = Set<Int>()
-            for issue in issues where !issue.isPullRequest && issue.comments > 0 {
-                guard issue.repository.fullName.split(separator: "/").first?.lowercased() == account.login.lowercased(),
-                      issue.number > 0, visitedIssues.insert(issue.id).inserted else { continue }
-                let path = try repositoryPath(issue.repository.fullName) + "/issues/\(issue.number)/comments"
+        var visitedIssues = Set<Int>()
+        for issue in issues {
+            let enabled = issue.isPullRequest ? settings.notifyPullRequestComments : settings.notifyIssueComments
+            let since = issue.isPullRequest ? pullRequestCommentsSince : commentsSince
+            guard enabled, let since, account.owns(issue.repository.fullName),
+                  issue.number > 0, visitedIssues.insert(issue.id).inserted else { continue }
+            let repository = try repositoryPath(issue.repository.fullName)
+            let query = [URLQueryItem(name: "since", value: ISO8601DateFormatter().string(from: since.addingTimeInterval(-120)))]
+            if issue.comments > 0 {
                 let result: ([RepositoryIssueComment], TimeInterval) = try await pages(
-                    path: path, query: [
-                        URLQueryItem(name: "since", value: ISO8601DateFormatter().string(from: commentsSince.addingTimeInterval(-120))),
-                    ], token: token
+                    path: repository + "/issues/\(issue.number)/comments", query: query, token: token
                 )
                 comments += result.0.map { IssueCommentActivity(issue: issue, comment: $0) }
+                interval = max(interval, result.1)
+            }
+            if issue.isPullRequest {
+                // Inline review comments are separate from the pull request's conversation comments.
+                let result: ([RepositoryIssueComment], TimeInterval) = try await pages(
+                    path: repository + "/pulls/\(issue.number)/comments", query: query, token: token
+                )
+                comments += result.0.map { IssueCommentActivity(issue: issue, comment: $0, kind: .review) }
                 interval = max(interval, result.1)
             }
         }

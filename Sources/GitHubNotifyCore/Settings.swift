@@ -1,7 +1,7 @@
 import Foundation
 
 public enum FilterMode: String, Codable, Sendable {
-    case all, favorite
+    case all, favorite, owned
 }
 
 public struct Settings: Codable, Equatable, Sendable {
@@ -12,11 +12,19 @@ public struct Settings: Codable, Equatable, Sendable {
     public var notifyStars = true
     public var notifyIssues = true
     public var notifyIssueComments = true
+    public var notifyForks = true
+    public var notifyPullRequests = true
+    public var notifyPullRequestComments = true
+
+    public var hasRepositoryAlerts: Bool {
+        notifyStars || notifyForks || notifyIssues || notifyPullRequests || notifyIssueComments || notifyPullRequestComments
+    }
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case updateFrequency, favoriteRepos, filtersMode, autoStart, notifyStars, notifyIssues, notifyIssueComments
+        case notifyForks, notifyPullRequests, notifyPullRequestComments
     }
 
     public init(from decoder: any Decoder) throws {
@@ -29,6 +37,9 @@ public struct Settings: Codable, Equatable, Sendable {
         notifyStars = try values.decodeIfPresent(Bool.self, forKey: .notifyStars) ?? true
         notifyIssues = try values.decodeIfPresent(Bool.self, forKey: .notifyIssues) ?? true
         notifyIssueComments = try values.decodeIfPresent(Bool.self, forKey: .notifyIssueComments) ?? true
+        notifyForks = try values.decodeIfPresent(Bool.self, forKey: .notifyForks) ?? true
+        notifyPullRequests = try values.decodeIfPresent(Bool.self, forKey: .notifyPullRequests) ?? true
+        notifyPullRequestComments = try values.decodeIfPresent(Bool.self, forKey: .notifyPullRequestComments) ?? true
     }
 
     // Accept the duration strings used by the Go app, including compound values like 1m30s.
@@ -58,9 +69,21 @@ public struct Settings: Codable, Equatable, Sendable {
 
     public func validate() throws {
         for pattern in favoriteRepos where !pattern.isEmpty {
-            do { _ = try NSRegularExpression(pattern: pattern) }
+            do { _ = try Self.favoriteExpression(for: pattern) }
             catch { throw SettingsError.invalidPattern(pattern) }
         }
+    }
+
+    static func favoriteExpression(for pattern: String) throws -> NSRegularExpression {
+        // Treat simple wildcard entries as globs, but preserve explicit regex syntax.
+        let regexSyntax = CharacterSet(charactersIn: #"^$[](){}\|+?"#)
+        if pattern.contains("*"), !pattern.contains(".*"), pattern.rangeOfCharacter(from: regexSyntax) == nil {
+            let expression = pattern.components(separatedBy: "*")
+                .map { NSRegularExpression.escapedPattern(for: $0) }
+                .joined(separator: ".*")
+            return try NSRegularExpression(pattern: "^\(expression)$")
+        }
+        return try NSRegularExpression(pattern: pattern)
     }
 
     public static func parseFavorites(_ text: String) -> [String] {
