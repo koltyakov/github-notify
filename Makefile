@@ -2,7 +2,7 @@ version ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 arch ?= $(shell uname -m)
 .DEFAULT_GOAL := build
 
-.PHONY: build build-darwin app bundle-darwin dmg test test-signing test-credentials start run install setup-signing clean
+.PHONY: build build-darwin app bundle-darwin dmg test test-signing test-credentials test-icons start run install setup-signing clean
 
 ifeq ($(OS),Windows_NT)
 host_os := Windows
@@ -32,6 +32,11 @@ test-signing:
 
 test-credentials:
 	python3 scripts/test-credentials.py
+
+test-icons:
+	mkdir -p .build/icon-tests
+	swiftc -swift-version 6 -warnings-as-errors Sources/GitHubNotify/ApplicationIcon.swift scripts/test-app-icon.swift -o .build/icon-tests/test-app-icon
+	.build/icon-tests/test-app-icon assets/icon.png .build/icon-tests/rendered
 
 app:
 	VERSION="$(version)" ARCH="$(arch)" /bin/bash scripts/bundle.sh

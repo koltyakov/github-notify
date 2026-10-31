@@ -37,9 +37,8 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" dist/staging
 cp "$binary" "$app/Contents/MacOS/github-notify"
 /bin/bash scripts/build-credential-helper.sh "$arch" "$app/Contents/Helpers/github-notify-credentials"
 cp LICENSE "$app/Contents/Resources/LICENSE"
-for state in base notice warn error; do
-    cp "assets/tray/$state.png" "$app/Contents/Resources/status-$state.png"
-done
+cp assets/icon.png "$app/Contents/Resources/AppLogo.png"
+swift scripts/generate-status-icons.swift assets/icon.png "$app/Contents/Resources"
 cp packaging/Info.plist "$app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $bundle_version" "$app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $bundle_version" "$app/Contents/Info.plist"

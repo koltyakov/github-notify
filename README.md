@@ -2,7 +2,7 @@
 
 A small menu bar app for unread GitHub notifications. The macOS app uses Swift and AppKit, runs natively on Apple Silicon, and has no third-party dependencies or browser-based UI.
 
-The original Go app lives in [`legacy/`](legacy/) and supports Windows and Linux only. Both apps reuse the original artwork in [`assets/`](assets/).
+The original Go app lives in [`legacy/`](legacy/) and supports Windows and Linux only. The native macOS app generates its app and menu-bar icons from [`assets/icon.png`](assets/icon.png), adding status badges during the bundle build. The legacy app keeps its tray artwork in [`assets/`](assets/).
 
 ## macOS
 
@@ -102,6 +102,8 @@ Changing the helper's code or compiler can change its Keychain identity; UI-only
 `make test-signing` checks signing selection and, when local signing is configured, verifies that two different test builds retain the same certificate-bound requirement. It never runs the app or reads the GitHub token.
 
 After local signing is configured, `make test-credentials` exercises the real login Keychain using a disposable dummy item. It verifies that two different main-app builds can read through the unchanged helper without password dialogs, and that untrusted parents and helpers are rejected. The real token items are never queried or changed.
+
+`make test-icons` checks the About logo's 64-point size and separate 1x/2x representations using a native image cell. It renders comparison images under `.build/icon-tests/rendered/` without opening windows or accessing credentials.
 
 Self-signed and ad-hoc builds are **not notarized** and are not a substitute for Developer ID distribution. Gatekeeper may block a downloaded build. CI still uses ad-hoc signing unless an identity is configured. To explicitly build ad-hoc, use `CODESIGN_IDENTITY=- make app`. For distribution outside your own machine, override the local identity with your Developer ID identity and notarize it through Apple:
 

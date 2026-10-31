@@ -28,6 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var marking = false
     private var startupError: (any Error)?
     private var statusImages: [String: NSImage] = [:]
+    // Load bundle resources directly instead of macOS's cached application icon.
+    private let applicationIcon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns")
+        .flatMap { NSImage(contentsOf: $0) }
+    private let aboutIcon = Bundle.main.url(forResource: "AppLogo", withExtension: "png")
+        .flatMap { ApplicationIcon.aboutImage(from: $0) }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -42,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSApp.terminate(nil)
             return
         }
+        if let applicationIcon { NSApp.applicationIconImage = applicationIcon }
         do { settings = try store.load() } catch { startupError = error }
         do { token = try tokenStore.load() } catch { startupError = error }
         buildMenu()
@@ -363,11 +369,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func about() {
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(options: [
+        let repositoryURL = URL(string: "https://github.com/koltyakov/github-notify")!
+        let credits = NSMutableAttributedString(string: "GitHub notifications in your menu bar.\n")
+        credits.append(NSAttributedString(string: repositoryURL.absoluteString, attributes: [
+            .link: repositoryURL,
+            .foregroundColor: NSColor.linkColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+        ]))
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "GitHub Notify",
             .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "GitHubNotifyVersion") as? String
                 ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development",
-            .credits: NSAttributedString(string: "GitHub notifications in your menu bar.\nhttps://github.com/koltyakov/github-notify"),
-        ])
+            .credits: credits,
+        ]
+        if let aboutIcon { options[.applicationIcon] = aboutIcon }
+        NSApp.orderFrontStandardAboutPanel(options: options)
     }
 }
