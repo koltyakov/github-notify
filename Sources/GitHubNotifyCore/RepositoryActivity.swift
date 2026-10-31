@@ -265,6 +265,7 @@ public struct RepositoryActivityState: Codable, Sendable {
             let key = activity.kind == .review ? "review-\(comment.id)" : String(comment.id)
             guard issue.isPullRequest == pullRequest, pullRequest || activity.kind == .thread,
                   issue.number > 0, comment.id > 0, snapshot.account.owns(name),
+                  comment.user?.id != snapshot.account.id,
                   state.accepts(key, createdAt: comment.createdAt),
                   let issueURL = repositoryURL(name)?.appendingPathComponent("\(pullRequest ? "pull" : "issues")/\(issue.number)"),
                   var components = URLComponents(url: issueURL, resolvingAgainstBaseURL: false) else { continue }

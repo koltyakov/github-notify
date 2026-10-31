@@ -35,13 +35,13 @@ final class RepositoryActivityTests: XCTestCase {
 
     private func comment(
         _ id: Int = 200, after seconds: Double = 1, issue: RepositoryIssue? = nil,
-        body: String = "Thanks!\nThis fixes it."
+        body: String = "Thanks!\nThis fixes it.", user: GitHubAccount? = GitHubAccount(id: 2, login: "contributor")
     ) throws -> IssueCommentActivity {
         IssueCommentActivity(
             issue: try issue ?? self.issue(after: -600),
             comment: RepositoryIssueComment(
                 id: id, body: body, createdAt: start.addingTimeInterval(seconds),
-                user: GitHubAccount(id: 2, login: "contributor")
+                user: user
             )
         )
     }
@@ -192,6 +192,39 @@ final class RepositoryActivityTests: XCTestCase {
         let alerts = state.alerts(for: snapshot(comments: comments, after: 60), settings: settings)
         XCTAssertEqual(alerts.count, 1)
         XCTAssertEqual(alerts.first?.body.count, "contributor: ".count + 240)
+    }
+
+    func testOwnCommentsAreExcludedAcrossIssuesPullRequestsAndReviews() throws {
+        var state = RepositoryActivityState(accountID: account.id)
+        _ = state.alerts(for: snapshot(), settings: Settings())
+        let pull = try issue(101, after: -600, pullRequest: true)
+        // Account IDs remain stable even if the author has renamed their login.
+        let author = GitHubAccount(id: account.id, login: "previous-login")
+        let ownThread = try comment(201, issue: pull, user: author)
+        let ownReview = IssueCommentActivity(issue: pull, comment: ownThread.comment, kind: .review)
+        let otherThread = try comment(203, issue: pull)
+        let otherReview = IssueCommentActivity(issue: pull, comment: otherThread.comment, kind: .review)
+        let comments = try [
+            comment(200, user: author), ownThread, ownReview,
+            comment(202), otherThread, otherReview,
+        ]
+        let next = snapshot(comments: comments, after: 60)
+        XCTAssertEqual(Set(state.alerts(for: next, settings: Settings()).map(\.id)), [
+            "comment-202", "pull-comment-203", "pull-comment-review-203",
+        ])
+        XCTAssertEqual(state.commentsCheckedAt, next.checkedAt)
+        XCTAssertEqual(state.pullRequestCommentsCheckedAt, next.checkedAt)
+        var restored = try JSONDecoder().decode(RepositoryActivityState.self, from: JSONEncoder().encode(state))
+        XCTAssertTrue(restored.alerts(for: next, settings: Settings()).isEmpty)
+    }
+
+    func testCommentsWithoutAuthorsStillProduceAlerts() throws {
+        var state = RepositoryActivityState(accountID: account.id)
+        _ = state.alerts(for: snapshot(), settings: Settings())
+        let next = snapshot(comments: [try comment(user: nil)], after: 60)
+        let alerts = state.alerts(for: next, settings: Settings())
+        XCTAssertEqual(alerts.count, 1)
+        XCTAssertEqual(alerts.first?.body, "Thanks! This fixes it.")
     }
 
     func testCommentToggleIsIndependentAndRebaselinesWhenEnabled() throws {
