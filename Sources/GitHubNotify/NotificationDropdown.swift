@@ -33,7 +33,7 @@ enum NotificationDropdown {
                 let item = NSMenuItem(title: shortened(notification.title), action: action, keyEquivalent: "")
                 let url = notification.browserURL
                 item.target = target
-                item.representedObject = url
+                item.representedObject = notification
                 item.isEnabled = url != nil
                 item.toolTip = "\(repository)\n\(notification.title)"
                 let symbol: String

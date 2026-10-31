@@ -123,6 +123,40 @@ final class GitHubClientTests: XCTestCase {
         XCTAssertTrue(requests.isEmpty)
     }
 
+    func testMarkNotificationReadUsesThreadEndpoint() async throws {
+        let transport = MockTransport([.init(status: 205, body: "")])
+        try await GitHubClient(transport: transport).markRead(notificationID: "12345", token: "test")
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 1)
+        let request = try XCTUnwrap(requests.first)
+        XCTAssertEqual(request.httpMethod, "PATCH")
+        XCTAssertEqual(request.url?.absoluteString, "https://api.github.com/notifications/threads/12345")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test")
+        XCTAssertNil(request.httpBody)
+    }
+
+    func testInvalidNotificationIDsNeverMakeRequests() async {
+        let transport = MockTransport([])
+        for id in ["", "../1", "1/2", "1?x=y", "1#fragment", "abc", "１２３"] {
+            do {
+                try await GitHubClient(transport: transport).markRead(notificationID: id, token: "test")
+                XCTFail("Should reject \(id)")
+            } catch GitHubError.invalidNotificationID {} catch { XCTFail("Unexpected error: \(error)") }
+        }
+        let requests = await transport.requests
+        XCTAssertTrue(requests.isEmpty)
+    }
+
+    func testMarkNotificationReadReportsFailureWithoutRetrying() async {
+        let transport = MockTransport([.init(status: 403)])
+        do {
+            try await GitHubClient(transport: transport).markRead(notificationID: "12345", token: "test")
+            XCTFail("Should report the failed write")
+        } catch GitHubError.http(status: 403, retryAfter: _) {} catch { XCTFail("Unexpected error: \(error)") }
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 1)
+    }
+
     func testMalformedJSONFails() async {
         let transport = MockTransport([.init(body: "invalid")])
         do {

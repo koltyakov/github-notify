@@ -40,6 +40,7 @@ public struct NotificationSnapshot: Sendable {
 public enum GitHubError: LocalizedError, Sendable {
     case invalidResponse
     case invalidRepository
+    case invalidNotificationID
     case http(status: Int, retryAfter: TimeInterval?)
 
     public var isUnauthorized: Bool {
@@ -56,6 +57,7 @@ public enum GitHubError: LocalizedError, Sendable {
         switch self {
         case .invalidResponse: return "GitHub returned an invalid response."
         case .invalidRepository: return "The repository name must be owner/repository."
+        case .invalidNotificationID: return "The notification ID must contain only digits."
         case .http(let status, _):
             switch status {
             case 401: return "GitHub rejected the token. Enter a valid token in Settings."
@@ -104,6 +106,16 @@ public struct GitHubClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let timestamp = ISO8601DateFormatter().string(from: date)
         request.httpBody = try JSONSerialization.data(withJSONObject: ["last_read_at": timestamp])
+        _ = try await send(request)
+    }
+
+    public func markRead(notificationID: String, token: String) async throws {
+        guard !notificationID.isEmpty, notificationID.allSatisfy({ $0.isASCII && $0.isNumber }) else {
+            throw GitHubError.invalidNotificationID
+        }
+        let url = baseURL.appendingPathComponent("notifications/threads/\(notificationID)")
+        var request = request(url: url, token: token)
+        request.httpMethod = "PATCH"
         _ = try await send(request)
     }
 

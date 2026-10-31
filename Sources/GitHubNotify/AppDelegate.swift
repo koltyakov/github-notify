@@ -6,12 +6,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     static let tokenURL = URL(string: "https://github.com/settings/tokens/new?scopes=notifications,repo&description=GitHub%20Notify%20App")!
     private let store = SettingsStore()
     private let tokenStore = TokenStore()
-    private let client = GitHubClient()
+    private let client: GitHubClient
+    private let openURL: @MainActor (URL) -> Void
     private let activityMonitor = RepositoryActivityMonitor()
     private var settings = Settings()
     private var token = ""
     private var account: GitHubAccount?
-    private var statusItem: NSStatusItem!
+    private(set) var statusItem: NSStatusItem!
     private var controlsMenu: NSMenu!
     private var markItem: NSMenuItem!
     private var refreshItem: NSMenuItem!
@@ -22,6 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var settingsWindow: SettingsWindowController?
     private var pollingTask: Task<Void, Never>?
     private var markingTask: Task<Void, Never>?
+    private(set) var notificationReadTasks: [String: Task<Void, Never>] = [:]
+    // Keep opened threads hidden until a poll started after their write completed.
+    private var openedNotifications: [String: Date] = [:]
     private var snapshot: NotificationSnapshot?
     private var summary: NotificationSummary?
     private var instanceLock: InstanceLock?
@@ -33,6 +37,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         .flatMap { NSImage(contentsOf: $0) }
     private let aboutIcon = Bundle.main.url(forResource: "AppLogo", withExtension: "png")
         .flatMap { ApplicationIcon.aboutImage(from: $0) }
+
+    init(
+        client: GitHubClient = GitHubClient(),
+        openURL: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) }
+    ) {
+        self.client = client
+        self.openURL = openURL
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -64,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         pollingTask?.cancel()
         markingTask?.cancel()
+        for task in notificationReadTasks.values { task.cancel() }
         activityMonitor.stop()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
@@ -74,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return false
     }
 
-    private func buildMenu() {
+    func buildMenu() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         statusItem.button?.imagePosition = .imageLeading
@@ -136,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = nil
     }
 
-    private func notificationsMenu() -> NSMenu {
+    func notificationsMenu() -> NSMenu {
         let notifications = summary?.visibleNotifications ?? []
         let emptyMessage: String
         if token.isEmpty { emptyMessage = "Add a GitHub token in Settings" }
@@ -150,8 +164,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openNotification(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        NSWorkspace.shared.open(url)
+        guard let notification = sender.representedObject as? GitHubNotification,
+              let url = notification.browserURL else { return }
+        if openedNotifications[notification.id] == nil, let snapshot {
+            openedNotifications[notification.id] = .distantFuture
+            render(snapshot)
+            let token = token
+            notificationReadTasks[notification.id] = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try await self.client.markRead(notificationID: notification.id, token: token)
+                    try Task.checkCancellation()
+                    self.openedNotifications[notification.id] = Date()
+                    self.notificationReadTasks[notification.id] = nil
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    self.openedNotifications[notification.id] = nil
+                    self.notificationReadTasks[notification.id] = nil
+                    if let snapshot = self.snapshot { self.render(snapshot) }
+                    self.statusItem.button?.toolTip = "Could not mark notification as read: \(error.localizedDescription)"
+                }
+            }
+        }
+        openURL(url)
     }
 
     private func setStatus(title: String, tooltip: String, symbol: String) {
@@ -213,8 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     }
                     let snapshot = try await self.client.notifications(token: self.token)
                     try Task.checkCancellation()
-                    self.snapshot = snapshot
-                    self.render(snapshot)
+                    self.receive(snapshot)
                     delay = max(delay, snapshot.pollInterval)
                 } catch is CancellationError { return }
                 catch {
@@ -237,13 +271,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         activityMonitor.start(token: token, settings: settings)
     }
 
+    func receive(_ snapshot: NotificationSnapshot) {
+        openedNotifications = openedNotifications.filter { snapshot.checkedAt < $0.value }
+        self.snapshot = snapshot
+        render(snapshot)
+    }
+
     private func render(_ snapshot: NotificationSnapshot) {
-        let summary = NotificationSummary(notifications: snapshot.notifications, settings: settings, accountLogin: account?.login)
+        let notifications = snapshot.notifications.filter { openedNotifications[$0.id] == nil }
+        let summary = NotificationSummary(notifications: notifications, settings: settings, accountLogin: account?.login)
         self.summary = summary
         markItem.isEnabled = summary.count > 0 && !marking
         tokenItem.isHidden = true
         let symbol = summary.count == 0 ? "bell" : summary.favoriteCount > 0 ? "bell.badge.fill" : "bell.fill"
-        setStatus(title: summary.title, tooltip: summary.tooltip, symbol: symbol)
+        setStatus(title: summary.count == 0 ? "" : summary.title, tooltip: summary.tooltip, symbol: symbol)
     }
 
     private func showError(_ error: any Error) {
@@ -359,6 +400,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.summary = nil
             self.markItem.isEnabled = false
             self.markingTask?.cancel()
+            for task in self.notificationReadTasks.values { task.cancel() }
+            self.notificationReadTasks.removeAll()
+            self.openedNotifications.removeAll()
             self.marking = false
             self.updateFilterChecks()
             self.restartPolling()
