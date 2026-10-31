@@ -50,13 +50,15 @@ make version=1.2.3 dmg      # Set bundle and installer version
 
 Local builds use `git describe --tags --always --dirty` as their version, including the nearest tag, commits since the tag, and any uncommitted changes. Without tags, Git supplies the commit hash; without Git metadata, the version is `dev`. About shows the full version. macOS bundle version fields use the tag's numeric `major.minor.patch`, or `0.0.0` when no numeric version is available. Override it with `make version=1.2.3 app`, or `VERSION=1.2.3 /bin/bash scripts/bundle.sh` when running the script directly.
 
-Builds use only Swift Package Manager and macOS's `sips`, `iconutil`, `codesign`, and `hdiutil`. The app has no Dock icon and prevents duplicate instances. It sleeps between checks and checks again after the Mac wakes.
+Builds use Swift Package Manager plus macOS's `clang`, `sips`, `iconutil`, `codesign`, and `hdiutil`. Local signing setup also uses the built-in `security` and `openssl` tools. The app has no Dock icon and prevents duplicate instances. It sleeps between checks and checks again after the Mac wakes.
 
 ### Settings and migration
 
 Preferences stay at `~/Library/Application Support/github-notify/settings.json`. The native app reads the Go app's update frequency, favorite expressions, and filter mode. Empty favorite entries no longer match every repository. Invalid expressions are rejected when saving.
 
 The old encrypted token is not imported. Enter it once in Settings to store it in Keychain. Saving native settings removes the old token field from the JSON file. The native app never writes tokens to that file.
+
+Certificate-signed builds now use a stable credential helper and a new login-Keychain item named `com.koltyakov.github-notify.credentials.v1.<reader-hash>`. If upgrading from the earlier direct-Keychain implementation, paste your GitHub token into Settings once and save it. The old Keychain item is left untouched and is not automatically read, so migration does not trigger its repeated password prompts.
 
 Quit the old Go app before opening the native version. If you enabled launch at login in the old app, disable it there first, or remove its `github-notify` entry from `~/Library/LaunchAgents/`. Then enable launch at login in the native app. The app uses macOS's actual login-item status instead of automatically registering an old saved preference. macOS may ask you to approve the new item under System Settings > General > Login Items.
 
@@ -91,9 +93,15 @@ make install
 
 Setup creates a self-signed certificate trusted for code signing only, with its private key in a separate Keychain under `~/Library/Application Support/github-notify/signing/`. Its generated unlock password is stored in that private directory with owner-only permissions. The signing Keychain is appended to the search list without removing existing entries or changing the default Keychain. The login Keychain and GitHub-token access rules are not changed. Local builds automatically reuse this identity. Do not copy the signing directory into the repository or share it.
 
-The first launch after switching from ad-hoc signing may still require one **Always Allow** approval for the GitHub token. Use the installed copy consistently. Later builds signed with the same certificate keep the same designated requirement, so the approval can survive updates. Do not enable "allow all applications" on the token to suppress prompts.
+A stable certificate alone is not sufficient for the login Keychain. For locally signed apps, macOS also applies a per-binary partition restriction, which can prompt after every rebuild even when the certificate and designated requirement are unchanged.
+
+Certificate-signed builds therefore access the token through a small helper whose binary is cached independently of the Swift/UI app. The helper authenticates its actual parent by bundle identifier and signing certificate before accessing Keychain; the app authenticates the helper before sending it a token. Tokens remain in the login Keychain, never in files or command-line arguments. The helper disables automatic password dialogs and reports denied or locked access instead. If the login Keychain is locked, unlock it in Keychain Access before saving the token. Use the installed copy consistently, and do not enable "allow all applications" on the token.
+
+Changing the helper's code or compiler can change its Keychain identity; UI-only rebuilds do not. A changed helper uses a fresh item, requiring the token to be pasted again rather than requesting passwords for the old hash-restricted item. Ad-hoc builds cannot authenticate this helper securely and retain the older direct-Keychain behavior. Use `make setup-signing` for local development.
 
 `make test-signing` checks signing selection and, when local signing is configured, verifies that two different test builds retain the same certificate-bound requirement. It never runs the app or reads the GitHub token.
+
+After local signing is configured, `make test-credentials` exercises the real login Keychain using a disposable dummy item. It verifies that two different main-app builds can read through the unchanged helper without password dialogs, and that untrusted parents and helpers are rejected. The real token items are never queried or changed.
 
 Self-signed and ad-hoc builds are **not notarized** and are not a substitute for Developer ID distribution. Gatekeeper may block a downloaded build. CI still uses ad-hoc signing unless an identity is configured. To explicitly build ad-hoc, use `CODESIGN_IDENTITY=- make app`. For distribution outside your own machine, override the local identity with your Developer ID identity and notarize it through Apple:
 
@@ -113,6 +121,7 @@ See [`legacy/README.md`](legacy/README.md) for the Go app's prerequisites and bu
 | --- | --- |
 | `Sources/GitHubNotify/` | AppKit menu, settings, Keychain, login items |
 | `Sources/GitHubNotifyCore/` | GitHub API, preferences, notification summaries |
+| `Sources/GitHubNotifyCredentials/` | Stable, authenticated login-Keychain helper |
 | `Tests/GitHubNotifyCoreTests/` | API and preferences regression tests |
 | `assets/` | Shared app icon, screenshots, and original tray artwork |
 | `packaging/`, `scripts/` | macOS bundle metadata and build script |

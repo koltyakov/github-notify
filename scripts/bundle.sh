@@ -35,6 +35,7 @@ esac
 app="dist/GitHub Notify.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" dist/staging
 cp "$binary" "$app/Contents/MacOS/github-notify"
+/bin/bash scripts/build-credential-helper.sh "$arch" "$app/Contents/Helpers/github-notify-credentials"
 cp LICENSE "$app/Contents/Resources/LICENSE"
 for state in base notice warn error; do
     cp "assets/tray/$state.png" "$app/Contents/Resources/status-$state.png"

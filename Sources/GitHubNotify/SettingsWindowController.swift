@@ -90,7 +90,7 @@ final class SettingsWindowController: NSWindowController {
 
         let stack = NSStackView(views: [
             label("GitHub token"), tokenField,
-            hint("Use a classic personal access token with notifications and repo scopes. repo includes private-repository access. The token is stored in your macOS Keychain."),
+            hint("Use a classic personal access token with notifications and repo scopes. Stored in the login Keychain by a stable signed helper. After upgrading from older builds, paste the token once and save."),
             label("Update frequency"), frequency,
             hint("GitHub's minimum polling interval takes precedence to avoid rate limits."),
             label("Favorite repositories"), favoritesScroll,

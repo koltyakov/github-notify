@@ -130,13 +130,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func notificationsMenu() -> NSMenu {
+        let notifications = summary?.visibleNotifications ?? []
         let emptyMessage: String
         if token.isEmpty { emptyMessage = "Add a GitHub token in Settings" }
         else if settings.filtersMode == .owned, account == nil { emptyMessage = "Loading your repositories…" }
         else if snapshot == nil { emptyMessage = "No notifications loaded" }
         else { emptyMessage = "No unread notifications" }
         return NotificationDropdown.make(
-            notifications: summary?.visibleNotifications ?? [], emptyMessage: emptyMessage,
+            notifications: notifications, emptyMessage: emptyMessage,
             target: self, action: #selector(openNotification(_:))
         )
     }

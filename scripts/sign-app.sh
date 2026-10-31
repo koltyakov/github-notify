@@ -39,5 +39,10 @@ else
     options+=(--options runtime --timestamp)
 fi
 
+helper="$app/Contents/Helpers/github-notify-credentials"
+if [[ -f "$helper" ]]; then
+    /usr/bin/codesign "${options[@]}" --identifier com.koltyakov.github-notify.credentials "$helper"
+    /usr/bin/codesign --verify --strict "$helper"
+fi
 /usr/bin/codesign "${options[@]}" "$app"
 /usr/bin/codesign --verify --strict "$app"

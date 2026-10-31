@@ -8,6 +8,7 @@ enum NotificationDropdown {
     ) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
+        menu.showsStateColumn = false
         menu.minimumWidth = 320
         guard !notifications.isEmpty else {
             let empty = NSMenuItem(title: emptyMessage, action: nil, keyEquivalent: "")
@@ -34,13 +35,16 @@ enum NotificationDropdown {
                 item.target = target
                 item.representedObject = url
                 item.isEnabled = url != nil
-                item.indentationLevel = 1
                 item.toolTip = "\(repository)\n\(notification.title)"
                 let symbol: String
                 switch notification.subject?.type {
-                case "Issue": symbol = "circle.dotted"
-                case "PullRequest": symbol = "arrow.triangle.branch"
-                case "Discussion": symbol = "bubble.left.and.bubble.right"
+                case "Issue": symbol = "ladybug"
+                case "PullRequest": symbol = "square.and.arrow.down"
+                case "Comment", "IssueComment", "PullRequestReviewComment", "Discussion": symbol = "text.bubble"
+                case "Star": symbol = "star"
+                case "Unstar": symbol = "star.slash"
+                case "Follow": symbol = "person"
+                case "Unfollow": symbol = "person.slash"
                 case "Release": symbol = "tag"
                 case "Commit": symbol = "point.topleft.down.curvedto.point.bottomright.up"
                 default: symbol = "bell"
@@ -53,6 +57,6 @@ enum NotificationDropdown {
     }
 
     private static func shortened(_ title: String) -> String {
-        title.count > 80 ? String(title.prefix(79)) + "…" : title
+        title.count > 48 ? String(title.prefix(47)) + "…" : title
     }
 }

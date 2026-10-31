@@ -2,7 +2,7 @@ version ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 arch ?= $(shell uname -m)
 .DEFAULT_GOAL := build
 
-.PHONY: build build-darwin app bundle-darwin dmg test test-signing start run install setup-signing clean
+.PHONY: build build-darwin app bundle-darwin dmg test test-signing test-credentials start run install setup-signing clean
 
 ifeq ($(OS),Windows_NT)
 host_os := Windows
@@ -29,6 +29,9 @@ test:
 
 test-signing:
 	python3 scripts/test-signing.py
+
+test-credentials:
+	python3 scripts/test-credentials.py
 
 app:
 	VERSION="$(version)" ARCH="$(arch)" /bin/bash scripts/bundle.sh

@@ -20,6 +20,8 @@ jobs:
       - name: Verify architecture and bundle
         run: |
           lipo "dist/GitHub Notify.app/Contents/MacOS/github-notify" -verify_arch arm64
+          lipo "dist/GitHub Notify.app/Contents/Helpers/github-notify-credentials" -verify_arch arm64
+          codesign --verify --strict "dist/GitHub Notify.app/Contents/Helpers/github-notify-credentials"
           codesign --verify --strict "dist/GitHub Notify.app"
           plutil -lint "dist/GitHub Notify.app/Contents/Info.plist"
       - name: Verify install and update in a temporary destination
