@@ -14,6 +14,7 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(settings.notifyForks)
         XCTAssertTrue(settings.notifyPullRequests)
         XCTAssertTrue(settings.notifyPullRequestComments)
+        XCTAssertTrue(settings.notifyWorkflowFailures)
     }
 
     func testLegacySettingsKeepPreferencesButNeverPersistToken() throws {
@@ -73,6 +74,7 @@ final class SettingsTests: XCTestCase {
         settings.notifyForks = false
         settings.notifyPullRequests = false
         settings.notifyPullRequestComments = false
+        settings.notifyWorkflowFailures = false
         settings.filtersMode = .owned
         XCTAssertFalse(settings.hasRepositoryAlerts)
         try store.save(settings)
@@ -90,5 +92,21 @@ final class SettingsTests: XCTestCase {
         try data.write(to: store.url)
         XCTAssertThrowsError(try store.load())
         XCTAssertEqual(try Data(contentsOf: store.url), data)
+    }
+
+    func testWorkflowFailureToggleMigratesAndCanEnableAlertsIndependently() throws {
+        let defaults = try JSONDecoder().decode(Settings.self, from: Data("{}".utf8))
+        XCTAssertTrue(defaults.notifyWorkflowFailures)
+        var settings = try JSONDecoder().decode(Settings.self, from: Data(#"{"notifyWorkflowFailures":false}"#.utf8))
+        XCTAssertFalse(settings.notifyWorkflowFailures)
+        settings.notifyStars = false
+        settings.notifyForks = false
+        settings.notifyIssues = false
+        settings.notifyPullRequests = false
+        settings.notifyIssueComments = false
+        settings.notifyPullRequestComments = false
+        XCTAssertFalse(settings.hasRepositoryAlerts)
+        settings.notifyWorkflowFailures = true
+        XCTAssertTrue(settings.hasRepositoryAlerts)
     }
 }

@@ -215,8 +215,10 @@ final class GitHubClientTests: XCTestCase {
         settings.notifyIssueComments = false
         settings.notifyPullRequests = false
         settings.notifyPullRequestComments = false
+        settings.notifyWorkflowFailures = false
         _ = try await GitHubClient(transport: transport).repositoryActivity(
-            token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: Date(), settings: settings
+            token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: Date(),
+            workflowFailuresSince: Date(), settings: settings
         )
         let requests = await transport.requests
         XCTAssertTrue(requests.isEmpty)
@@ -326,5 +328,102 @@ final class GitHubClientTests: XCTestCase {
         let requests = await transport.requests
         XCTAssertEqual(requests.count, 2)
         XCTAssertEqual(requests[1].url?.path, "/repos/owner/repo/pulls/3/comments")
+    }
+
+    private func workflowOnlySettings() -> Settings {
+        var settings = Settings()
+        settings.notifyStars = false
+        settings.notifyForks = false
+        settings.notifyIssues = false
+        settings.notifyPullRequests = false
+        settings.notifyIssueComments = false
+        settings.notifyPullRequestComments = false
+        return settings
+    }
+
+    func testWorkflowFailurePollingUsesOwnedRepositoriesWrappedPagesAndUpdateTimes() async throws {
+        let transport = MockTransport([
+            .init(body: #"[{"id":10,"full_name":"owner/repo","stargazers_count":5},{"id":10,"full_name":"owner/repo","stargazers_count":5},{"id":20,"full_name":"other/repo","stargazers_count":8}]"#),
+            .init(headers: ["X-Poll-Interval": "180", "Link": "<https://api.github.com/repos/owner/repo/actions/runs?page=2&status=failure>; rel=\"next\""],
+                  body: #"{"workflow_runs":[{"id":300,"name":"Build","head_branch":null,"run_number":42,"status":"completed","conclusion":"failure","created_at":"2020-01-01T00:00:00Z","updated_at":"2023-11-14T22:13:21Z","repository":{"full_name":"owner/repo"}}]}"#),
+            .init(body: #"{"workflow_runs":[{"id":299,"run_number":41,"run_attempt":2,"status":"completed","conclusion":"failure","updated_at":"2020-01-01T00:00:00Z","repository":{"full_name":"owner/repo"}},{"id":301,"run_number":43,"status":"completed","conclusion":"failure","updated_at":"2023-11-14T22:13:21Z","repository":{"full_name":"owner/another"}}]}"#),
+        ])
+        let result = try await GitHubClient(transport: transport).repositoryActivity(
+            token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil,
+            workflowFailuresSince: Date(timeIntervalSince1970: 1_700_000_000), settings: workflowOnlySettings()
+        )
+        XCTAssertEqual(result.workflowRuns.map(\.id), [300])
+        XCTAssertEqual(result.workflowRuns.first?.runAttempt, 1)
+        XCTAssertNil(result.workflowRuns.first?.headBranch)
+        XCTAssertEqual(result.pollInterval, 180)
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(requests[1].url?.path, "/repos/owner/repo/actions/runs")
+        let query = URLComponents(url: requests[1].url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertTrue(query.contains(URLQueryItem(name: "status", value: "failure")))
+        XCTAssertTrue(query.contains(URLQueryItem(name: "per_page", value: "100")))
+        // Creation-time filtering would miss long-running workflows and reruns.
+        XCTAssertFalse(query.contains { $0.name == "created" })
+        XCTAssertEqual(requests[2].value(forHTTPHeaderField: "Authorization"), "Bearer test")
+    }
+
+    func testWorkflowFailureBaselineAndDisabledToggleMakeNoRequests() async throws {
+        let transport = MockTransport([])
+        let client = GitHubClient(transport: transport)
+        var settings = workflowOnlySettings()
+        _ = try await client.repositoryActivity(
+            token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil, settings: settings
+        )
+        settings.notifyWorkflowFailures = false
+        _ = try await client.repositoryActivity(
+            token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil,
+            workflowFailuresSince: Date(), settings: settings
+        )
+        let requests = await transport.requests
+        XCTAssertTrue(requests.isEmpty)
+    }
+
+    func testWorkflowPaginationRejectsUnsafeLinksAndCycles() async {
+        for target in [
+            "https://example.com/repos/owner/repo/actions/runs?page=2",
+            "https://api.github.com/repos/owner/another/actions/runs?page=2",
+            "https://api.github.com/repos/owner/repo/actions/runs?status=failure&per_page=100",
+        ] {
+            let transport = MockTransport([
+                .init(body: #"[{"id":10,"full_name":"owner/repo","stargazers_count":5}]"#),
+                .init(headers: ["Link": "<\(target)>; rel=\"next\""], body: #"{"workflow_runs":[]}"#),
+            ])
+            do {
+                _ = try await GitHubClient(transport: transport).repositoryActivity(
+                    token: "secret", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil,
+                    workflowFailuresSince: Date(), settings: workflowOnlySettings()
+                )
+                XCTFail("Should reject \(target)")
+            } catch GitHubError.invalidResponse {} catch { XCTFail("Unexpected error: \(error)") }
+            let requests = await transport.requests
+            XCTAssertEqual(requests.count, 2)
+        }
+    }
+
+    func testUnavailableActionsDoNotBlockOtherRepositoriesAndRateLimitsPropagate() async throws {
+        for status in [404, 403, 429] {
+            let transport = MockTransport([
+                .init(body: #"[{"id":10,"full_name":"owner/one","stargazers_count":5},{"id":20,"full_name":"owner/two","stargazers_count":8}]"#),
+                .init(status: status, headers: status == 404 ? [:] : ["Retry-After": "300"]),
+                .init(body: #"{"workflow_runs":[]}"#),
+            ])
+            do {
+                _ = try await GitHubClient(transport: transport).repositoryActivity(
+                    token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil,
+                    workflowFailuresSince: Date(), settings: workflowOnlySettings()
+                )
+                XCTAssertEqual(status, 404)
+            } catch let error as GitHubError {
+                XCTAssertNotEqual(status, 404)
+                XCTAssertEqual(error.retryAfter, 300)
+            }
+            let requests = await transport.requests
+            XCTAssertEqual(requests.count, status == 404 ? 3 : 2)
+        }
     }
 }

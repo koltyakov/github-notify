@@ -14,6 +14,7 @@ final class SettingsWindowController: NSWindowController {
     private let notifyPullRequests = NSButton(checkboxWithTitle: "Pull requests", target: nil, action: nil)
     private let notifyIssueComments = NSButton(checkboxWithTitle: "Issue comments", target: nil, action: nil)
     private let notifyPullRequestComments = NSButton(checkboxWithTitle: "Pull request comments", target: nil, action: nil)
+    private let notifyWorkflowFailures = NSButton(checkboxWithTitle: "CI pipeline failures", target: nil, action: nil)
     private let onSave: (Settings, String) throws -> Void
     private var settings: Settings
     private let intervals = ["10s", "30s", "120s"]
@@ -66,10 +67,12 @@ final class SettingsWindowController: NSWindowController {
         notifyForks.state = settings.notifyForks ? .on : .off
         notifyPullRequests.state = settings.notifyPullRequests ? .on : .off
         notifyPullRequestComments.state = settings.notifyPullRequestComments ? .on : .off
+        notifyWorkflowFailures.state = settings.notifyWorkflowFailures ? .on : .off
 
         let alertOptions = NSGridView(views: [
             [notifyStars, notifyForks], [notifyIssues, notifyPullRequests],
             [notifyIssueComments, notifyPullRequestComments],
+            [notifyWorkflowFailures, NSView()],
         ])
         alertOptions.columnSpacing = 16
         alertOptions.rowSpacing = 6
@@ -96,7 +99,7 @@ final class SettingsWindowController: NSWindowController {
             label("Favorite repositories"), favoritesScroll,
             hint("Separate repository names, wildcard patterns, or regular expressions with commas or newlines. Examples: koltyakov/* or ssnitko/varro-*"),
             label("Desktop notifications"), alertOptions,
-            hint("Silent banners for your repositories. Use Filter mode > My repositories to also limit the menu count. Stars and forks report net changes between checks. Private repositories require the repo token scope."),
+            hint("Silent banners for your repositories. CI failures cover GitHub Actions. Use Filter mode > My repositories to also limit the menu count. Stars and forks report net changes between checks. Private repositories require the repo token scope."),
             notificationSettings,
             autoStart, buttons,
         ])
@@ -160,6 +163,7 @@ final class SettingsWindowController: NSWindowController {
         updated.notifyForks = notifyForks.state == .on
         updated.notifyPullRequests = notifyPullRequests.state == .on
         updated.notifyPullRequestComments = notifyPullRequestComments.state == .on
+        updated.notifyWorkflowFailures = notifyWorkflowFailures.state == .on
         do {
             try updated.validate()
             try onSave(updated, tokenField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))

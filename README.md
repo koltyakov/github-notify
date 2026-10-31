@@ -14,7 +14,7 @@ Requires macOS 13 or later. Builds target the current Mac's architecture by defa
 - A **My repositories** filter for unread counts and marking only your own repositories as read.
 - Mark the displayed repositories as read, without clearing notifications newer than the last check.
 - Native settings window, token storage in Keychain, and macOS login items.
-- Silent, clickable macOS banners for stars, unstars, forks, new issues and pull requests, and comments on both.
+- Silent, clickable macOS banners for stars, unstars, forks, new issues and pull requests, comments on both, and failed GitHub Actions runs.
 - Asynchronous network requests with pagination, GitHub polling hints, and rate-limit delays.
 
 ### Build and run
@@ -70,7 +70,7 @@ Choose **Filter mode > My repositories** in the menu to restrict unread counts, 
 
 Left-click the menu-bar icon to see unread GitHub notifications, grouped by repository and limited by the same filter as the count. Issue and pull request entries open their corresponding GitHub pages. Long titles are shortened in the dropdown; hover to see the full title. Right-click or Control-click the icon to access **Filter mode**, **Mark as read**, and the existing controls. Opening the dropdown uses the last successful check without additional API requests.
 
-Desktop alerts always cover only your own repositories, regardless of the selected menu filter. Settings has separate toggles for stars and unstars, forks, new issues, new pull requests, issue comments, and pull request comments. All are enabled by default. Allow GitHub Notify when macOS requests notification permission. If permission was denied, use **Open notification settings** in the app's Settings. Banners require the `.app` bundle, not the bare executable from `swift run`.
+Desktop alerts always cover only your own repositories, regardless of the selected menu filter. Settings has separate toggles for stars and unstars, forks, new issues, new pull requests, issue comments, pull request comments, and CI pipeline failures. All are enabled by default. Allow GitHub Notify when macOS requests notification permission. If permission was denied, use **Open notification settings** in the app's Settings. Banners require the `.app` bundle, not the bare executable from `swift run`.
 
 To send a test without accessing GitHub or changing saved baselines, run `"dist/GitHub Notify.app/Contents/MacOS/github-notify" --test-notification` after building the app. This works even if another instance is running and reports whether Notification Center confirms delivery.
 
@@ -79,6 +79,8 @@ Alerts cover repositories owned by the token's personal GitHub account, regardle
 The first successful check establishes a silent baseline. Later checks run at most once per minute automatically, or slower if configured or requested by GitHub. Star banners report net increases and decreases in each repository's star count, not individual stargazers. Fork banners report net increases in fork counts. Additions and removals between checks can cancel out.
 
 Issue and pull request banners report newly created threads, including threads already closed by the time of the check. Comment banners cover conversations on issues and pull requests, plus inline pull request review comments. Your own comments and edits to old comments do not trigger alerts. Clicking a banner opens the stargazers, forks, issue, pull request, or specific comment on GitHub. Focus modes and macOS notification settings can suppress banners.
+
+CI pipeline failure banners cover completed GitHub Actions runs with a `failure` conclusion, not successful, cancelled, or timed-out runs or external CI providers. Each banner shows the workflow and branch and opens the failed run attempt. Failed reruns can alert again, but the same attempt does not repeat after restarting. Runs that started before the last check can still trigger an alert when they fail. This adds paginated failed-run requests for each owned repository on every check, so accounts with many repositories or failed runs use more API quota. Repositories where Actions returns 404 are skipped. The existing classic token's `repo` scope covers these requests; no `workflow` scope is needed. CI alerts do not change the unread menu count.
 
 Baselines are stored in `~/Library/Application Support/github-notify/activity.json` to avoid repeats after restarting. Turning an alert type off and back on establishes a fresh baseline for that type. Repository alerts run without a status row in the menu. Errors go to the macOS system log under the `com.koltyakov.github-notify` subsystem and `RepositoryActivity` category, without interrupting unread-notification polling.
 

@@ -35,7 +35,8 @@ final class RepositoryActivityMonitor {
                             token: token, account: account, issuesSince: state?.issuesCheckedAt,
                             commentsSince: state?.commentsCheckedAt,
                             pullRequestsSince: state?.pullRequestsCheckedAt,
-                            pullRequestCommentsSince: state?.pullRequestCommentsCheckedAt, settings: settings
+                            pullRequestCommentsSince: state?.pullRequestCommentsCheckedAt,
+                            workflowFailuresSince: state?.workflowFailuresCheckedAt, settings: settings
                         )
                         try Task.checkCancellation()
                         guard var updated = state else { return }

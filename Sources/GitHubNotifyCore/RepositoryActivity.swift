@@ -80,22 +80,55 @@ public struct IssueCommentActivity: Sendable {
     }
 }
 
+public struct RepositoryWorkflowRun: Decodable, Sendable {
+    public let id: Int
+    public let name: String?
+    public let headBranch: String?
+    public let runNumber: Int
+    public let runAttempt: Int
+    public let status: String
+    public let conclusion: String?
+    public let updatedAt: Date
+    public let repository: GitHubNotification.Repository
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, status, conclusion, repository
+        case headBranch = "head_branch", runNumber = "run_number", runAttempt = "run_attempt", updatedAt = "updated_at"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(Int.self, forKey: .id)
+        name = try values.decodeIfPresent(String.self, forKey: .name)
+        headBranch = try values.decodeIfPresent(String.self, forKey: .headBranch)
+        runNumber = try values.decode(Int.self, forKey: .runNumber)
+        runAttempt = try values.decodeIfPresent(Int.self, forKey: .runAttempt) ?? 1
+        status = try values.decode(String.self, forKey: .status)
+        conclusion = try values.decodeIfPresent(String.self, forKey: .conclusion)
+        updatedAt = try values.decode(Date.self, forKey: .updatedAt)
+        repository = try values.decode(GitHubNotification.Repository.self, forKey: .repository)
+    }
+}
+
 public struct RepositoryActivitySnapshot: Sendable {
     public let account: GitHubAccount
     public let repositories: [OwnedRepository]
     public let issues: [RepositoryIssue]
     public let comments: [IssueCommentActivity]
+    public let workflowRuns: [RepositoryWorkflowRun]
     public let checkedAt: Date
     public let pollInterval: TimeInterval
 
     public init(
         account: GitHubAccount, repositories: [OwnedRepository], issues: [RepositoryIssue],
-        comments: [IssueCommentActivity] = [], checkedAt: Date, pollInterval: TimeInterval
+        comments: [IssueCommentActivity] = [], workflowRuns: [RepositoryWorkflowRun] = [],
+        checkedAt: Date, pollInterval: TimeInterval
     ) {
         self.account = account
         self.repositories = repositories
         self.issues = issues
         self.comments = comments
+        self.workflowRuns = workflowRuns
         self.checkedAt = checkedAt
         self.pollInterval = pollInterval
     }
@@ -121,9 +154,11 @@ public struct RepositoryActivityState: Codable, Sendable {
     private var commentState: ActivityState?
     private var pullRequestState: ActivityState?
     private var pullRequestCommentState: ActivityState?
+    private var workflowFailureState: ActivityState?
     public var commentsCheckedAt: Date? { commentState?.checkedAt }
     public var pullRequestsCheckedAt: Date? { pullRequestState?.checkedAt }
     public var pullRequestCommentsCheckedAt: Date? { pullRequestCommentState?.checkedAt }
+    public var workflowFailuresCheckedAt: Date? { workflowFailureState?.checkedAt }
 
     // New category baselines are optional so older activity files still decode.
     private struct ActivityState: Codable, Sendable {
@@ -148,6 +183,7 @@ public struct RepositoryActivityState: Codable, Sendable {
         if !settings.notifyForks { forkCounts = nil }
         if !settings.notifyPullRequests { pullRequestState = nil }
         if !settings.notifyPullRequestComments { pullRequestCommentState = nil }
+        if !settings.notifyWorkflowFailures { workflowFailureState = nil }
         if !settings.notifyIssues {
             issuesStartedAt = nil
             issuesCheckedAt = nil
@@ -247,6 +283,26 @@ public struct RepositoryActivityState: Codable, Sendable {
         if settings.notifyPullRequestComments {
             alerts += Self.commentAlerts(for: snapshot, state: &pullRequestCommentState, pullRequest: true)
         } else { pullRequestCommentState = nil }
+        if settings.notifyWorkflowFailures {
+            if var state = workflowFailureState {
+                for run in snapshot.workflowRuns.sorted(by: { $0.id < $1.id }) {
+                    let name = run.repository.fullName
+                    let key = "\(run.id)-\(run.runAttempt)"
+                    guard run.status == "completed", run.conclusion == "failure",
+                          run.id > 0, run.runAttempt > 0, snapshot.account.owns(name),
+                          state.accepts(key, createdAt: run.updatedAt),
+                          let url = Self.repositoryURL(name)?.appendingPathComponent("actions/runs/\(run.id)/attempts/\(run.runAttempt)") else { continue }
+                    state.seen[key] = run.updatedAt
+                    let branch = run.headBranch.map { " on \($0)" } ?? ""
+                    alerts.append(RepositoryToast(
+                        id: "workflow-failure-\(key)", repository: name, title: "CI pipeline failed",
+                        body: "\(run.name ?? "Workflow")\(branch), run #\(run.runNumber)", url: url
+                    ))
+                }
+                state.finish(at: snapshot.checkedAt)
+                workflowFailureState = state
+            } else { workflowFailureState = ActivityState(startedAt: snapshot.checkedAt, checkedAt: snapshot.checkedAt) }
+        } else { workflowFailureState = nil }
         return alerts
     }
 

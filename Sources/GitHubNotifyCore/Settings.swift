@@ -15,16 +15,17 @@ public struct Settings: Codable, Equatable, Sendable {
     public var notifyForks = true
     public var notifyPullRequests = true
     public var notifyPullRequestComments = true
+    public var notifyWorkflowFailures = true
 
     public var hasRepositoryAlerts: Bool {
-        notifyStars || notifyForks || notifyIssues || notifyPullRequests || notifyIssueComments || notifyPullRequestComments
+        notifyStars || notifyForks || notifyIssues || notifyPullRequests || notifyIssueComments || notifyPullRequestComments || notifyWorkflowFailures
     }
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case updateFrequency, favoriteRepos, filtersMode, autoStart, notifyStars, notifyIssues, notifyIssueComments
-        case notifyForks, notifyPullRequests, notifyPullRequestComments
+        case notifyForks, notifyPullRequests, notifyPullRequestComments, notifyWorkflowFailures
     }
 
     public init(from decoder: any Decoder) throws {
@@ -40,6 +41,7 @@ public struct Settings: Codable, Equatable, Sendable {
         notifyForks = try values.decodeIfPresent(Bool.self, forKey: .notifyForks) ?? true
         notifyPullRequests = try values.decodeIfPresent(Bool.self, forKey: .notifyPullRequests) ?? true
         notifyPullRequestComments = try values.decodeIfPresent(Bool.self, forKey: .notifyPullRequestComments) ?? true
+        notifyWorkflowFailures = try values.decodeIfPresent(Bool.self, forKey: .notifyWorkflowFailures) ?? true
     }
 
     // Accept the duration strings used by the Go app, including compound values like 1m30s.

@@ -11,10 +11,11 @@ final class RepositoryActivityTests: XCTestCase {
     }
 
     private func snapshot(
-        _ stars: Int = 10, issues: [RepositoryIssue] = [], comments: [IssueCommentActivity] = [], after seconds: Double = 0
+        _ stars: Int = 10, issues: [RepositoryIssue] = [], comments: [IssueCommentActivity] = [],
+        workflowRuns: [RepositoryWorkflowRun] = [], after seconds: Double = 0
     ) -> RepositoryActivitySnapshot {
         RepositoryActivitySnapshot(
-            account: account, repositories: [repository(stars)], issues: issues, comments: comments,
+            account: account, repositories: [repository(stars)], issues: issues, comments: comments, workflowRuns: workflowRuns,
             checkedAt: start.addingTimeInterval(seconds), pollInterval: 60
         )
     }
@@ -318,5 +319,86 @@ final class RepositoryActivityTests: XCTestCase {
             issues: [foreign], comments: next.comments, checkedAt: start.addingTimeInterval(60), pollInterval: 60
         )
         XCTAssertTrue(state.alerts(for: changed, settings: Settings()).isEmpty)
+    }
+
+    private func workflowRun(
+        _ id: Int = 300, attempt: Int = 1, after seconds: Double = 1,
+        repository: String = "owner/repo", status: String = "completed", conclusion: String? = "failure"
+    ) throws -> RepositoryWorkflowRun {
+        let json: [String: Any] = [
+            "id": id, "name": "Build", "head_branch": "main", "run_number": 42, "run_attempt": attempt,
+            "status": status, "conclusion": conclusion as Any? ?? NSNull(),
+            "created_at": "2020-01-01T00:00:00Z",
+            "updated_at": ISO8601DateFormatter().string(from: start.addingTimeInterval(seconds)),
+            "repository": ["full_name": repository],
+        ]
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(RepositoryWorkflowRun.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+
+    func testWorkflowFailuresBaselineSilentlyThenLinkToFailedAttempt() throws {
+        var state = RepositoryActivityState(accountID: account.id)
+        XCTAssertTrue(state.alerts(for: snapshot(workflowRuns: [try workflowRun(after: -1)]), settings: Settings()).isEmpty)
+        XCTAssertEqual(state.workflowFailuresCheckedAt, start)
+        let run = try workflowRun()
+        let next = snapshot(workflowRuns: [run, run], after: 60)
+        let alerts = state.alerts(for: next, settings: Settings())
+        XCTAssertEqual(alerts.count, 1)
+        XCTAssertEqual(alerts.first?.id, "workflow-failure-300-1")
+        XCTAssertEqual(alerts.first?.repository, "owner/repo")
+        XCTAssertEqual(alerts.first?.title, "CI pipeline failed")
+        XCTAssertEqual(alerts.first?.body, "Build on main, run #42")
+        XCTAssertEqual(alerts.first?.url.absoluteString, "https://github.com/owner/repo/actions/runs/300/attempts/1")
+        var restored = try JSONDecoder().decode(RepositoryActivityState.self, from: JSONEncoder().encode(state))
+        XCTAssertTrue(restored.alerts(for: next, settings: Settings()).isEmpty)
+        let rerun = try workflowRun(attempt: 2, after: 61)
+        XCTAssertEqual(restored.alerts(for: snapshot(workflowRuns: [rerun], after: 120), settings: Settings()).first?.id,
+                       "workflow-failure-300-2")
+        XCTAssertTrue(restored.alerts(for: snapshot(workflowRuns: [run, rerun], after: 600), settings: Settings()).isEmpty)
+    }
+
+    func testWorkflowFailuresIgnoreOtherConclusionsOwnersAndInvalidURLs() throws {
+        var state = RepositoryActivityState(accountID: account.id)
+        _ = state.alerts(for: snapshot(), settings: Settings())
+        let runs = try [
+            workflowRun(301, conclusion: "success"), workflowRun(302, conclusion: "cancelled"),
+            workflowRun(303, status: "in_progress", conclusion: nil), workflowRun(304, after: -1),
+            workflowRun(305, repository: "other/repo"), workflowRun(306, repository: "owner/repo?evil"),
+            workflowRun(-1), workflowRun(307, attempt: 0),
+        ]
+        XCTAssertTrue(state.alerts(for: snapshot(workflowRuns: runs, after: 60), settings: Settings()).isEmpty)
+    }
+
+    func testWorkflowFailureToggleIsIndependentAndRebaselinesOnEnable() throws {
+        var settings = Settings()
+        settings.notifyStars = false
+        settings.notifyForks = false
+        settings.notifyIssues = false
+        settings.notifyPullRequests = false
+        settings.notifyIssueComments = false
+        settings.notifyPullRequestComments = false
+        settings.filtersMode = .favorite
+        settings.favoriteRepos = ["somewhere/else"]
+        var state = RepositoryActivityState(accountID: account.id)
+        _ = state.alerts(for: snapshot(), settings: settings)
+        _ = state.alerts(for: snapshot(after: 60), settings: settings)
+        // Delayed results within the overlap are delivered, regardless of the menu filter.
+        XCTAssertEqual(state.alerts(for: snapshot(workflowRuns: [try workflowRun(after: 45)], after: 120), settings: settings).count, 1)
+        settings.notifyWorkflowFailures = false
+        state.configure(settings)
+        XCTAssertNil(state.workflowFailuresCheckedAt)
+        XCTAssertTrue(state.alerts(for: snapshot(workflowRuns: [try workflowRun(301, after: 121)], after: 180), settings: settings).isEmpty)
+        settings.notifyWorkflowFailures = true
+        XCTAssertTrue(state.alerts(for: snapshot(workflowRuns: [try workflowRun(301, after: 121)], after: 240), settings: settings).isEmpty)
+        XCTAssertEqual(state.alerts(for: snapshot(workflowRuns: [try workflowRun(302, after: 241)], after: 300), settings: settings).count, 1)
+    }
+
+    func testWorkflowFailureSupportMigratesExistingActivitySilently() throws {
+        let json = Data(#"{"accountID":1,"seenIssues":{}}"#.utf8)
+        var state = try JSONDecoder().decode(RepositoryActivityState.self, from: json)
+        XCTAssertNil(state.workflowFailuresCheckedAt)
+        XCTAssertTrue(state.alerts(for: snapshot(workflowRuns: [try workflowRun()], after: 60), settings: Settings()).isEmpty)
+        XCTAssertEqual(state.workflowFailuresCheckedAt, start.addingTimeInterval(60))
     }
 }

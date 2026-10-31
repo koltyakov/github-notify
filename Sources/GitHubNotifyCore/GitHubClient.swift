@@ -114,14 +114,16 @@ public struct GitHubClient: Sendable {
 
     public func repositoryActivity(
         token: String, account: GitHubAccount, issuesSince: Date?, commentsSince: Date? = nil,
-        pullRequestsSince: Date? = nil, pullRequestCommentsSince: Date? = nil, settings: Settings
+        pullRequestsSince: Date? = nil, pullRequestCommentsSince: Date? = nil,
+        workflowFailuresSince: Date? = nil, settings: Settings
     ) async throws -> RepositoryActivitySnapshot {
         let checkedAt = Date()
         var repositories: [OwnedRepository] = []
         var issues: [RepositoryIssue] = []
         var comments: [IssueCommentActivity] = []
+        var workflowRuns: [RepositoryWorkflowRun] = []
         var interval: TimeInterval = 60
-        if settings.notifyStars || settings.notifyForks {
+        if settings.notifyStars || settings.notifyForks || (settings.notifyWorkflowFailures && workflowFailuresSince != nil) {
             let result: ([OwnedRepository], TimeInterval) = try await pages(
                 path: "user/repos", query: [
                     URLQueryItem(name: "affiliation", value: "owner"),
@@ -173,8 +175,29 @@ public struct GitHubClient: Sendable {
                 interval = max(interval, result.1)
             }
         }
+        if settings.notifyWorkflowFailures, let since = workflowFailuresSince {
+            var visitedRepositories = Set<Int>()
+            for repository in repositories where visitedRepositories.insert(repository.id).inserted {
+                let path = try repositoryPath(repository.fullName) + "/actions/runs"
+                do {
+                    let result: ([RepositoryWorkflowRun], TimeInterval) = try await pages(
+                        path: path, query: [URLQueryItem(name: "status", value: "failure")], token: token,
+                        decode: { try $0.decode(WorkflowRunsPage.self, from: $1).workflowRuns }
+                    )
+                    // Filter on update time, not creation time. A run may fail long after it started,
+                    // and reruns keep the original creation time and run ID.
+                    workflowRuns += result.0.filter {
+                        $0.updatedAt >= since.addingTimeInterval(-120) && $0.repository.fullName == repository.fullName
+                    }
+                    interval = max(interval, result.1)
+                } catch GitHubError.http(status: 404, retryAfter: nil) {
+                    // GitHub returns 404 for repositories where Actions is unavailable.
+                    continue
+                }
+            }
+        }
         return RepositoryActivitySnapshot(
-            account: account, repositories: repositories, issues: issues, comments: comments,
+            account: account, repositories: repositories, issues: issues, comments: comments, workflowRuns: workflowRuns,
             checkedAt: checkedAt, pollInterval: interval
         )
     }
@@ -188,8 +211,14 @@ public struct GitHubClient: Sendable {
         return "repos/" + repository
     }
 
+    private struct WorkflowRunsPage: Decodable {
+        let workflowRuns: [RepositoryWorkflowRun]
+        enum CodingKeys: String, CodingKey { case workflowRuns = "workflow_runs" }
+    }
+
     private func pages<Item: Decodable>(
-        path: String, query: [URLQueryItem], token: String
+        path: String, query: [URLQueryItem], token: String,
+        decode: (JSONDecoder, Data) throws -> [Item] = { try $0.decode([Item].self, from: $1) }
     ) async throws -> ([Item], TimeInterval) {
         var next: URL? = baseURL.appendingPathComponent(path)
             .appending(queryItems: query + [URLQueryItem(name: "per_page", value: "100")])
@@ -202,7 +231,7 @@ public struct GitHubClient: Sendable {
             try Task.checkCancellation()
             guard visited.insert(url).inserted else { throw GitHubError.invalidResponse }
             let (data, response) = try await send(request(url: url, token: token))
-            items += try decoder.decode([Item].self, from: data)
+            items += try decode(decoder, data)
             if let value = response.value(forHTTPHeaderField: "X-Poll-Interval"),
                let seconds = Double(value), seconds.isFinite, seconds > 0 { interval = max(interval, seconds) }
             next = try nextPage(response.value(forHTTPHeaderField: "Link"), path: "/" + path)
