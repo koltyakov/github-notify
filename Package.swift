@@ -9,5 +9,6 @@ let package = Package(
         .target(name: "GitHubNotifyCore"),
         .executableTarget(name: "GitHubNotify", dependencies: ["GitHubNotifyCore"]),
         .testTarget(name: "GitHubNotifyCoreTests", dependencies: ["GitHubNotifyCore"]),
+        .testTarget(name: "GitHubNotifyTests", dependencies: ["GitHubNotify"]),
     ]
 )

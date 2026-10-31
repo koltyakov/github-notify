@@ -69,8 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        openSettings()
-        return true
+        // Notification clicks can also send a reopen event. Only the Settings menu
+        // action should open preferences; suppress AppKit's default window reopening too.
+        return false
     }
 
     private func buildMenu() {
