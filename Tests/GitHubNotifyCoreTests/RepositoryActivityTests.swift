@@ -370,6 +370,27 @@ final class RepositoryActivityTests: XCTestCase {
         XCTAssertTrue(state.alerts(for: snapshot(workflowRuns: runs, after: 60), settings: Settings()).isEmpty)
     }
 
+    func testPartialCICheckRetainsBaselineAndDeduplicatesUntilRecovery() throws {
+        var state = RepositoryActivityState(accountID: account.id)
+        let settings = Settings()
+        _ = state.alerts(for: snapshot(), settings: settings)
+        let run = try workflowRun()
+        for seconds in [60.0, 600.0] {
+            let partial = RepositoryActivitySnapshot(
+                account: account, repositories: [repository(10)], issues: [], workflowRuns: [run],
+                workflowFailureErrors: ["owner/another: The request timed out."],
+                checkedAt: start.addingTimeInterval(seconds), pollInterval: 60
+            )
+            XCTAssertEqual(state.alerts(for: partial, settings: settings).map(\.id), seconds == 60 ? ["workflow-failure-300-1"] : [])
+            XCTAssertEqual(state.workflowFailuresCheckedAt, start)
+            XCTAssertEqual(state.issuesCheckedAt, partial.checkedAt)
+            state = try JSONDecoder().decode(RepositoryActivityState.self, from: JSONEncoder().encode(state))
+        }
+        let recovered = snapshot(workflowRuns: [run, try workflowRun(301, after: 2)], after: 660)
+        XCTAssertEqual(state.alerts(for: recovered, settings: settings).map(\.id), ["workflow-failure-301-1"])
+        XCTAssertEqual(state.workflowFailuresCheckedAt, recovered.checkedAt)
+    }
+
     func testWorkflowFailureToggleIsIndependentAndRebaselinesOnEnable() throws {
         var settings = Settings()
         settings.notifyStars = false

@@ -82,6 +82,8 @@ Issue and pull request banners report newly created threads, including threads a
 
 CI pipeline failure banners cover completed GitHub Actions runs with a `failure` conclusion, not successful, cancelled, or timed-out runs or external CI providers. Each banner shows the workflow and branch and opens the failed run attempt. Failed reruns can alert again, but the same attempt does not repeat after restarting. Runs that started before the last check can still trigger an alert when they fail. This adds paginated failed-run requests for each owned repository on every check, so accounts with many repositories or failed runs use more API quota. Repositories where Actions returns 404 are skipped. The existing classic token's `repo` scope covers these requests; no `workflow` scope is needed. CI alerts do not change the unread menu count.
 
+Failed CI checks do not discard issue or other activity alerts. Errors are logged, and the CI checkpoint stays unchanged until a complete check succeeds, so later checks can recover missed runs without repeating delivered alerts. GitHub rate-limit delays still apply.
+
 Baselines are stored in `~/Library/Application Support/github-notify/activity.json` to avoid repeats after restarting. Turning an alert type off and back on establishes a fresh baseline for that type. Repository alerts run without a status row in the menu. Errors go to the macOS system log under the `com.koltyakov.github-notify` subsystem and `RepositoryActivity` category, without interrupting unread-notification polling.
 
 ### Signing and distribution

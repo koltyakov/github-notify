@@ -134,6 +134,7 @@ public struct GitHubClient: Sendable {
         var issues: [RepositoryIssue] = []
         var comments: [IssueCommentActivity] = []
         var workflowRuns: [RepositoryWorkflowRun] = []
+        var workflowFailureErrors: [String] = []
         var interval: TimeInterval = 60
         if settings.notifyStars || settings.notifyForks || (settings.notifyWorkflowFailures && workflowFailuresSince != nil) {
             let result: ([OwnedRepository], TimeInterval) = try await pages(
@@ -194,6 +195,7 @@ public struct GitHubClient: Sendable {
                 do {
                     let result: ([RepositoryWorkflowRun], TimeInterval) = try await pages(
                         path: path, query: [URLQueryItem(name: "status", value: "failure")], token: token,
+                        additionalPaginationPaths: ["/repositories/\(repository.id)/actions/runs"],
                         decode: { try $0.decode(WorkflowRunsPage.self, from: $1).workflowRuns }
                     )
                     // Filter on update time, not creation time. A run may fail long after it started,
@@ -205,12 +207,22 @@ public struct GitHubClient: Sendable {
                 } catch GitHubError.http(status: 404, retryAfter: nil) {
                     // GitHub returns 404 for repositories where Actions is unavailable.
                     continue
+                } catch {
+                    try Task.checkCancellation()
+                    if error is CancellationError { throw error }
+                    // CI is independent of issue activity. Keep its baseline for a later retry.
+                    workflowFailureErrors.append("\(repository.fullName): \(error.localizedDescription)")
+                    if let error = error as? GitHubError {
+                        interval = max(interval, error.retryAfter ?? 60)
+                        if error.isUnauthorized || error.retryAfter != nil { break }
+                        if case .http(status: 429, retryAfter: _) = error { break }
+                    }
                 }
             }
         }
         return RepositoryActivitySnapshot(
             account: account, repositories: repositories, issues: issues, comments: comments, workflowRuns: workflowRuns,
-            checkedAt: checkedAt, pollInterval: interval
+            workflowFailureErrors: workflowFailureErrors, checkedAt: checkedAt, pollInterval: interval
         )
     }
 
@@ -230,6 +242,7 @@ public struct GitHubClient: Sendable {
 
     private func pages<Item: Decodable>(
         path: String, query: [URLQueryItem], token: String,
+        additionalPaginationPaths: Set<String> = [],
         decode: (JSONDecoder, Data) throws -> [Item] = { try $0.decode([Item].self, from: $1) }
     ) async throws -> ([Item], TimeInterval) {
         var next: URL? = baseURL.appendingPathComponent(path)
@@ -246,7 +259,7 @@ public struct GitHubClient: Sendable {
             items += try decode(decoder, data)
             if let value = response.value(forHTTPHeaderField: "X-Poll-Interval"),
                let seconds = Double(value), seconds.isFinite, seconds > 0 { interval = max(interval, seconds) }
-            next = try nextPage(response.value(forHTTPHeaderField: "Link"), path: "/" + path)
+            next = try nextPage(response.value(forHTTPHeaderField: "Link"), paths: additionalPaginationPaths.union(["/" + path]))
         }
         return (items, interval)
     }
@@ -275,7 +288,7 @@ public struct GitHubClient: Sendable {
         return result
     }
 
-    private func nextPage(_ link: String?, path: String = "/notifications") throws -> URL? {
+    private func nextPage(_ link: String?, paths: Set<String> = ["/notifications"]) throws -> URL? {
         guard let link else { return nil }
         for part in link.components(separatedBy: ",") {
             let sections = part.components(separatedBy: ";")
@@ -286,7 +299,7 @@ public struct GitHubClient: Sendable {
             guard target.hasPrefix("<"), target.hasSuffix(">"),
                   let url = URL(string: String(target.dropFirst().dropLast())),
                   url.scheme == "https", url.host == baseURL.host, url.port == nil,
-                  url.user == nil, url.password == nil, url.path == path else {
+                  url.user == nil, url.password == nil, paths.contains(url.path) else {
                 throw GitHubError.invalidResponse
             }
             return url

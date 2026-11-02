@@ -116,12 +116,15 @@ public struct RepositoryActivitySnapshot: Sendable {
     public let issues: [RepositoryIssue]
     public let comments: [IssueCommentActivity]
     public let workflowRuns: [RepositoryWorkflowRun]
+    // A nonempty list means CI is incomplete and its saved checkpoint must not advance.
+    public let workflowFailureErrors: [String]
     public let checkedAt: Date
     public let pollInterval: TimeInterval
 
     public init(
         account: GitHubAccount, repositories: [OwnedRepository], issues: [RepositoryIssue],
         comments: [IssueCommentActivity] = [], workflowRuns: [RepositoryWorkflowRun] = [],
+        workflowFailureErrors: [String] = [],
         checkedAt: Date, pollInterval: TimeInterval
     ) {
         self.account = account
@@ -129,6 +132,7 @@ public struct RepositoryActivitySnapshot: Sendable {
         self.issues = issues
         self.comments = comments
         self.workflowRuns = workflowRuns
+        self.workflowFailureErrors = workflowFailureErrors
         self.checkedAt = checkedAt
         self.pollInterval = pollInterval
     }
@@ -299,7 +303,8 @@ public struct RepositoryActivityState: Codable, Sendable {
                         body: "\(run.name ?? "Workflow")\(branch), run #\(run.runNumber)", url: url
                     ))
                 }
-                state.finish(at: snapshot.checkedAt)
+                // Partial CI results may alert, but must not move past events still waiting to be fetched.
+                if snapshot.workflowFailureErrors.isEmpty { state.finish(at: snapshot.checkedAt) }
                 workflowFailureState = state
             } else { workflowFailureState = ActivityState(startedAt: snapshot.checkedAt, checkedAt: snapshot.checkedAt) }
         } else { workflowFailureState = nil }
