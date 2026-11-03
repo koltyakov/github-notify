@@ -1,6 +1,6 @@
 import Foundation
 
-public struct GitHubAccount: Decodable, Sendable {
+public struct GitHubAccount: Codable, Sendable {
     public let id: Int
     public let login: String
 
@@ -118,6 +118,9 @@ public struct RepositoryActivitySnapshot: Sendable {
     public let workflowRuns: [RepositoryWorkflowRun]
     // A nonempty list means CI is incomplete and its saved checkpoint must not advance.
     public let workflowFailureErrors: [String]
+    // Only complete stargazer lists are included, keyed by stable repository ID.
+    public let stargazers: [String: [GitHubAccount]]
+    public let stargazerErrors: [String]
     public let checkedAt: Date
     public let pollInterval: TimeInterval
 
@@ -125,6 +128,7 @@ public struct RepositoryActivitySnapshot: Sendable {
         account: GitHubAccount, repositories: [OwnedRepository], issues: [RepositoryIssue],
         comments: [IssueCommentActivity] = [], workflowRuns: [RepositoryWorkflowRun] = [],
         workflowFailureErrors: [String] = [],
+        stargazers: [String: [GitHubAccount]] = [:], stargazerErrors: [String] = [],
         checkedAt: Date, pollInterval: TimeInterval
     ) {
         self.account = account
@@ -133,6 +137,8 @@ public struct RepositoryActivitySnapshot: Sendable {
         self.comments = comments
         self.workflowRuns = workflowRuns
         self.workflowFailureErrors = workflowFailureErrors
+        self.stargazers = stargazers
+        self.stargazerErrors = stargazerErrors
         self.checkedAt = checkedAt
         self.pollInterval = pollInterval
     }
@@ -150,7 +156,7 @@ public struct RepositoryToast: Equatable, Sendable {
 // changing the menu filter, and restarting the app must not replay activity.
 public struct RepositoryActivityState: Codable, Sendable {
     public let accountID: Int
-    private var starCounts: [String: Int]?
+    public private(set) var stargazers: [String: [GitHubAccount]]?
     private var forkCounts: [String: Int]?
     public private(set) var issuesCheckedAt: Date?
     private var issuesStartedAt: Date?
@@ -183,7 +189,7 @@ public struct RepositoryActivityState: Codable, Sendable {
     public init(accountID: Int) { self.accountID = accountID }
 
     public mutating func configure(_ settings: Settings) {
-        if !settings.notifyStars { starCounts = nil }
+        if !settings.notifyStars { stargazers = nil }
         if !settings.notifyForks { forkCounts = nil }
         if !settings.notifyPullRequests { pullRequestState = nil }
         if !settings.notifyPullRequestComments { pullRequestCommentState = nil }
@@ -200,25 +206,38 @@ public struct RepositoryActivityState: Codable, Sendable {
         guard accountID == snapshot.account.id else { return [] }
         var alerts: [RepositoryToast] = []
         if settings.notifyStars {
-            var updated: [String: Int] = [:]
+            var updated: [String: [GitHubAccount]] = [:]
+            var visited = Set<String>()
             for repository in snapshot.repositories where snapshot.account.owns(repository.fullName) {
                 let key = String(repository.id)
-                guard updated[key] == nil else { continue }
-                updated[key] = repository.stargazersCount
-                guard let previous = starCounts?[key], repository.stargazersCount != previous,
-                      let url = Self.repositoryURL(repository.fullName)?.appendingPathComponent("stargazers") else { continue }
-                let increase = repository.stargazersCount - previous
-                let title = increase > 0
-                    ? (increase == 1 ? "New star" : "\(increase) new stars")
-                    : (increase == -1 ? "Star removed" : "\(-increase) stars removed")
-                alerts.append(RepositoryToast(
-                    id: "stars-\(key)-\(snapshot.checkedAt.timeIntervalSince1970)", repository: repository.fullName,
-                    title: title,
-                    body: "\(repository.stargazersCount) total stars", url: url
-                ))
+                guard visited.insert(key).inserted else { continue }
+                guard let current = snapshot.stargazers[key] else {
+                    // A failed or incomplete fetch must never look like everyone unstarred.
+                    updated[key] = stargazers?[key]
+                    continue
+                }
+                var seen = Set<Int>()
+                let users = current.filter { seen.insert($0.id).inserted }.sorted { $0.id < $1.id }
+                updated[key] = users
+                guard let previous = stargazers?[key],
+                       let url = Self.repositoryURL(repository.fullName)?.appendingPathComponent("stargazers") else { continue }
+                let previousIDs = Set(previous.map(\.id))
+                let currentIDs = Set(users.map(\.id))
+                let added = users.filter { !previousIDs.contains($0.id) }
+                let removed = previous.filter { !currentIDs.contains($0.id) }
+                for (kind, changed) in [("added", added), ("removed", removed)] where !changed.isEmpty {
+                    let names = changed.map { "@\($0.login)" }.sorted().joined(separator: ", ")
+                    let title = kind == "added"
+                        ? (changed.count == 1 ? "New star" : "\(changed.count) new stars")
+                        : (changed.count == 1 ? "Star removed" : "\(changed.count) stars removed")
+                    alerts.append(RepositoryToast(
+                        id: "stars-\(kind)-\(key)-\(snapshot.checkedAt.timeIntervalSince1970)", repository: repository.fullName,
+                        title: title, body: "\(names)\n\(users.count) total stars", url: url
+                    ))
+                }
             }
-            starCounts = updated
-        } else { starCounts = nil }
+            stargazers = updated
+        } else { stargazers = nil }
 
         if settings.notifyForks {
             var updated: [String: Int] = [:]

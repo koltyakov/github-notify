@@ -187,6 +187,8 @@ final class GitHubClientTests: XCTestCase {
             .init(headers: ["X-Poll-Interval": "120", "Link": "<https://api.github.com/user/repos?page=2>; rel=\"next\""],
                   body: #"[{"id":10,"full_name":"owner/one","stargazers_count":3}]"#),
             .init(body: #"[{"id":20,"full_name":"owner/two","stargazers_count":8}]"#),
+            .init(body: #"[{"id":2,"login":"alice"}]"#),
+            .init(body: #"[{"id":3,"login":"bob"}]"#),
         ])
         let client = GitHubClient(transport: transport)
         let account = try await client.account(token: "test")
@@ -194,12 +196,111 @@ final class GitHubClientTests: XCTestCase {
         XCTAssertEqual(snapshot.repositories.map(\.stargazersCount), [3, 8])
         XCTAssertEqual(snapshot.pollInterval, 120)
         XCTAssertTrue(snapshot.issues.isEmpty)
+        XCTAssertEqual(snapshot.stargazers["10"]?.first?.login, "alice")
+        XCTAssertEqual(snapshot.stargazers["20"]?.first?.login, "bob")
+        XCTAssertTrue(snapshot.stargazerErrors.isEmpty)
         let requests = await transport.requests
-        XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(requests.count, 5)
         XCTAssertEqual(requests[0].url?.path, "/user")
         let query = URLComponents(url: requests[1].url!, resolvingAgainstBaseURL: false)?.queryItems
         XCTAssertTrue(query?.contains(URLQueryItem(name: "affiliation", value: "owner")) == true)
         XCTAssertEqual(requests[2].value(forHTTPHeaderField: "Authorization"), "Bearer test")
+        XCTAssertEqual(requests[3].url?.path, "/repos/owner/one/stargazers")
+    }
+
+    func testStargazersFetchAllPagesDeduplicateIDsAndSkipEmptyAndForeignRepositories() async throws {
+        let transport = MockTransport([
+            .init(body: #"[{"id":10,"full_name":"owner/repo","stargazers_count":2},{"id":10,"full_name":"owner/repo","stargazers_count":2},{"id":20,"full_name":"owner/empty","stargazers_count":0},{"id":30,"full_name":"other/repo","stargazers_count":2}]"#),
+            .init(headers: ["Link": "<https://api.github.com/repositories/10/stargazers?page=2>; rel=\"next\""],
+                  body: #"[{"id":3,"login":"bob"}]"#),
+            .init(headers: ["X-Poll-Interval": "180"], body: #"[{"id":3,"login":"bob"},{"id":2,"login":"alice"}]"#),
+        ])
+        let result = try await GitHubClient(transport: transport).repositoryActivity(
+            token: "secret", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil, settings: Settings()
+        )
+        XCTAssertEqual(result.stargazers["10"]?.map(\.login), ["alice", "bob"])
+        XCTAssertEqual(result.stargazers["20"]?.count, 0)
+        XCTAssertNil(result.stargazers["30"])
+        XCTAssertTrue(result.stargazerErrors.isEmpty)
+        XCTAssertEqual(result.pollInterval, 180)
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(requests[1].url?.query, "per_page=100")
+        XCTAssertTrue(requests.allSatisfy { $0.value(forHTTPHeaderField: "Authorization") == "Bearer secret" })
+    }
+
+    func testStargazerFailuresDiscardPartialListsAndContinueWithOtherRepositories() async throws {
+        for failure in [
+            MockTransport.Reply(status: 500), .init(body: "invalid"), .init(error: URLError(.timedOut)),
+            .init(body: #"[{"id":0,"login":"invalid"}]"#),
+        ] {
+            let transport = MockTransport([
+                .init(body: #"[{"id":10,"full_name":"owner/one","stargazers_count":2},{"id":20,"full_name":"owner/two","stargazers_count":1}]"#),
+                .init(headers: ["Link": "<https://api.github.com/repos/owner/one/stargazers?page=2>; rel=\"next\""],
+                      body: #"[{"id":2,"login":"alice"}]"#),
+                failure,
+                .init(body: #"[{"id":3,"login":"bob"}]"#),
+            ])
+            let result = try await GitHubClient(transport: transport).repositoryActivity(
+                token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil, settings: Settings()
+            )
+            XCTAssertNil(result.stargazers["10"])
+            XCTAssertEqual(result.stargazers["20"]?.first?.login, "bob")
+            XCTAssertEqual(result.stargazerErrors.count, 1)
+            let requests = await transport.requests
+            XCTAssertEqual(requests.count, 4)
+        }
+    }
+
+    func testStargazerPaginationRejectsUnsafeLinksAndCycles() async throws {
+        for target in [
+            "https://example.com/repos/owner/repo/stargazers?page=2",
+            "http://api.github.com/repositories/10/stargazers?page=2",
+            "https://api.github.com:444/repositories/10/stargazers?page=2",
+            "https://user:password@api.github.com/repositories/10/stargazers?page=2",
+            "https://api.github.com/repositories/20/stargazers?page=2",
+            "https://api.github.com/repos/owner/other/stargazers?page=2",
+            "https://api.github.com/repos/owner/repo/stargazers?per_page=100",
+        ] {
+            let transport = MockTransport([
+                .init(body: #"[{"id":10,"full_name":"owner/repo","stargazers_count":1}]"#),
+                .init(headers: ["Link": "<\(target)>; rel=\"next\""], body: #"[{"id":2,"login":"alice"}]"#),
+            ])
+            let result = try await GitHubClient(transport: transport).repositoryActivity(
+                token: "secret", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil, settings: Settings()
+            )
+            XCTAssertTrue(result.stargazers.isEmpty, target)
+            XCTAssertEqual(result.stargazerErrors.count, 1, target)
+            let requests = await transport.requests
+            XCTAssertEqual(requests.count, 2, target)
+        }
+    }
+
+    func testStargazerRateLimitsStopFurtherRequestsAndCancellationPropagates() async throws {
+        for status in [401, 403, 429] {
+            let transport = MockTransport([
+                .init(body: #"[{"id":10,"full_name":"owner/one","stargazers_count":1},{"id":20,"full_name":"owner/two","stargazers_count":1}]"#),
+                .init(status: status, headers: ["Retry-After": "300"]),
+            ])
+            let result = try await GitHubClient(transport: transport).repositoryActivity(
+                token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil, settings: Settings()
+            )
+            XCTAssertTrue(result.stargazers.isEmpty)
+            XCTAssertEqual(result.stargazerErrors.count, 1)
+            XCTAssertEqual(result.pollInterval, 300)
+            let requests = await transport.requests
+            XCTAssertEqual(requests.count, 2)
+        }
+        let transport = MockTransport([
+            .init(body: #"[{"id":10,"full_name":"owner/repo","stargazers_count":1}]"#),
+            .init(error: CancellationError()),
+        ])
+        do {
+            _ = try await GitHubClient(transport: transport).repositoryActivity(
+                token: "test", account: GitHubAccount(id: 1, login: "owner"), issuesSince: nil, settings: Settings()
+            )
+            XCTFail("Should propagate cancellation")
+        } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
     }
 
     func testActivityQueriesAllIssueStatesWithOverlapAndPagination() async throws {

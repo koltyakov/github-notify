@@ -42,6 +42,9 @@ final class RepositoryActivityMonitor {
                         for error in snapshot.workflowFailureErrors {
                             self.logger.error("CI alert check failed: \(error, privacy: .public)")
                         }
+                        for error in snapshot.stargazerErrors {
+                            self.logger.error("Stargazer check failed: \(error, privacy: .public)")
+                        }
                         guard var updated = state else { return }
                         let alerts = updated.alerts(for: snapshot, settings: settings)
                         // Save before delivery so refresh/relaunch cannot replay already submitted banners.

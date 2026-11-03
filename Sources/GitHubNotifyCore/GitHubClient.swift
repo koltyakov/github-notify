@@ -135,6 +135,9 @@ public struct GitHubClient: Sendable {
         var comments: [IssueCommentActivity] = []
         var workflowRuns: [RepositoryWorkflowRun] = []
         var workflowFailureErrors: [String] = []
+        var stargazers: [String: [GitHubAccount]] = [:]
+        var stargazerErrors: [String] = []
+        var activityRequestsBlocked = false
         var interval: TimeInterval = 60
         if settings.notifyStars || settings.notifyForks || (settings.notifyWorkflowFailures && workflowFailuresSince != nil) {
             let result: ([OwnedRepository], TimeInterval) = try await pages(
@@ -214,6 +217,42 @@ public struct GitHubClient: Sendable {
                     workflowFailureErrors.append("\(repository.fullName): \(error.localizedDescription)")
                     if let error = error as? GitHubError {
                         interval = max(interval, error.retryAfter ?? 60)
+                        if error.isUnauthorized || error.retryAfter != nil {
+                            activityRequestsBlocked = true
+                            break
+                        }
+                        if case .http(status: 429, retryAfter: _) = error {
+                            activityRequestsBlocked = true
+                            break
+                        }
+                    }
+                }
+            }
+        }
+        if settings.notifyStars && !activityRequestsBlocked {
+            var visitedRepositories = Set<Int>()
+            for repository in repositories where visitedRepositories.insert(repository.id).inserted {
+                let key = String(repository.id)
+                // Avoid an extra request for every empty repository on each check.
+                if repository.stargazersCount == 0 {
+                    stargazers[key] = []
+                    continue
+                }
+                do {
+                    let result: ([GitHubAccount], TimeInterval) = try await pages(
+                        path: try repositoryPath(repository.fullName) + "/stargazers", query: [], token: token,
+                        additionalPaginationPaths: ["/repositories/\(repository.id)/stargazers"]
+                    )
+                    guard result.0.allSatisfy({ $0.id > 0 && !$0.login.isEmpty }) else { throw GitHubError.invalidResponse }
+                    var seen = Set<Int>()
+                    stargazers[key] = result.0.filter { seen.insert($0.id).inserted }.sorted { $0.id < $1.id }
+                    interval = max(interval, result.1)
+                } catch {
+                    try Task.checkCancellation()
+                    if error is CancellationError { throw error }
+                    stargazerErrors.append("\(repository.fullName): \(error.localizedDescription)")
+                    if let error = error as? GitHubError {
+                        interval = max(interval, error.retryAfter ?? 60)
                         if error.isUnauthorized || error.retryAfter != nil { break }
                         if case .http(status: 429, retryAfter: _) = error { break }
                     }
@@ -222,7 +261,8 @@ public struct GitHubClient: Sendable {
         }
         return RepositoryActivitySnapshot(
             account: account, repositories: repositories, issues: issues, comments: comments, workflowRuns: workflowRuns,
-            workflowFailureErrors: workflowFailureErrors, checkedAt: checkedAt, pollInterval: interval
+            workflowFailureErrors: workflowFailureErrors, stargazers: stargazers, stargazerErrors: stargazerErrors,
+            checkedAt: checkedAt, pollInterval: interval
         )
     }
 

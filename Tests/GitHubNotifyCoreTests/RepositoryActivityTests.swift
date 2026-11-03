@@ -12,10 +12,11 @@ final class RepositoryActivityTests: XCTestCase {
 
     private func snapshot(
         _ stars: Int = 10, issues: [RepositoryIssue] = [], comments: [IssueCommentActivity] = [],
-        workflowRuns: [RepositoryWorkflowRun] = [], after seconds: Double = 0
+        workflowRuns: [RepositoryWorkflowRun] = [], stargazers: [GitHubAccount]? = nil, after seconds: Double = 0
     ) -> RepositoryActivitySnapshot {
         RepositoryActivitySnapshot(
             account: account, repositories: [repository(stars)], issues: issues, comments: comments, workflowRuns: workflowRuns,
+            stargazers: ["10": stargazers ?? (0..<stars).map { GitHubAccount(id: 1000 + $0, login: "user\($0 + 1)") }],
             checkedAt: start.addingTimeInterval(seconds), pollInterval: 60
         )
     }
@@ -54,16 +55,78 @@ final class RepositoryActivityTests: XCTestCase {
         XCTAssertTrue(state.alerts(for: snapshot(500, after: 60), settings: Settings()).isEmpty)
     }
 
-    func testStarsReportNetIncreasesAndDecreasesAndLinkToStargazers() throws {
+    func testStarsNameAddedAndRemovedUsersAndLinkToStargazers() throws {
         var state = RepositoryActivityState(accountID: account.id)
         _ = state.alerts(for: snapshot(), settings: Settings())
         let toast = try XCTUnwrap(state.alerts(for: snapshot(11, after: 60), settings: Settings()).first)
         XCTAssertEqual(toast.repository, "owner/repo")
         XCTAssertEqual(toast.title, "New star")
-        XCTAssertEqual(toast.body, "11 total stars")
+        XCTAssertEqual(toast.body, "@user11\n11 total stars")
         XCTAssertEqual(toast.url.absoluteString, "https://github.com/owner/repo/stargazers")
         XCTAssertEqual(state.alerts(for: snapshot(9, after: 120), settings: Settings()).first?.title, "2 stars removed")
         XCTAssertEqual(state.alerts(for: snapshot(12, after: 180), settings: Settings()).first?.title, "3 new stars")
+    }
+
+    func testStargazerSwapsAtSameCountProduceSeparateNamedAlerts() throws {
+        let alice = GitHubAccount(id: 2, login: "alice")
+        let bob = GitHubAccount(id: 3, login: "bob")
+        var state = RepositoryActivityState(accountID: account.id)
+        XCTAssertTrue(state.alerts(for: snapshot(1, stargazers: [alice]), settings: Settings()).isEmpty)
+        let next = snapshot(1, stargazers: [bob, bob], after: 60)
+        let alerts = state.alerts(for: next, settings: Settings())
+        XCTAssertEqual(alerts.map(\.title), ["New star", "Star removed"])
+        XCTAssertEqual(alerts.map(\.body), ["@bob\n1 total stars", "@alice\n1 total stars"])
+        XCTAssertEqual(Set(alerts.map(\.id)).count, 2)
+        var restored = try JSONDecoder().decode(RepositoryActivityState.self, from: JSONEncoder().encode(state))
+        XCTAssertEqual(restored.stargazers?["10"]?.map(\.login), ["bob"])
+        XCTAssertTrue(restored.alerts(for: next, settings: Settings()).isEmpty)
+        XCTAssertEqual(restored.alerts(for: snapshot(0, stargazers: [], after: 120), settings: Settings()).first?.body,
+                       "@bob\n0 total stars")
+    }
+
+    func testStargazerRenamesUpdateSavedLoginWithoutAlerting() {
+        var state = RepositoryActivityState(accountID: account.id)
+        _ = state.alerts(for: snapshot(1, stargazers: [GitHubAccount(id: 2, login: "old-name")]), settings: Settings())
+        XCTAssertTrue(state.alerts(
+            for: snapshot(1, stargazers: [GitHubAccount(id: 2, login: "new-name")], after: 60), settings: Settings()
+        ).isEmpty)
+        XCTAssertEqual(state.stargazers?["10"]?.first?.login, "new-name")
+    }
+
+    func testCountOnlyStateMigratesToUserListsSilently() throws {
+        let json = Data(#"{"accountID":1,"starCounts":{"10":99},"seenIssues":{}}"#.utf8)
+        var state = try JSONDecoder().decode(RepositoryActivityState.self, from: json)
+        XCTAssertNil(state.stargazers)
+        XCTAssertTrue(state.alerts(for: snapshot(1), settings: Settings()).isEmpty)
+        XCTAssertEqual(state.stargazers?["10"]?.map(\.login), ["user1"])
+        XCTAssertEqual(state.alerts(for: snapshot(0, after: 60), settings: Settings()).first?.body, "@user1\n0 total stars")
+    }
+
+    func testMissingStargazerListKeepsBaselineAndDoesNotBlockOtherAlerts() throws {
+        var state = RepositoryActivityState(accountID: account.id)
+        _ = state.alerts(for: snapshot(1), settings: Settings())
+        let failed = RepositoryActivitySnapshot(
+            account: account, repositories: [repository(0)], issues: [try issue()],
+            stargazerErrors: ["owner/repo: timeout"], checkedAt: start.addingTimeInterval(60), pollInterval: 60
+        )
+        XCTAssertEqual(state.alerts(for: failed, settings: Settings()).map(\.title), ["New issue #100"])
+        XCTAssertEqual(state.stargazers?["10"]?.map(\.login), ["user1"])
+        state = try JSONDecoder().decode(RepositoryActivityState.self, from: JSONEncoder().encode(state))
+        XCTAssertEqual(state.alerts(for: snapshot(0, after: 120), settings: Settings()).first?.body, "@user1\n0 total stars")
+        XCTAssertTrue(state.alerts(for: snapshot(0, after: 180), settings: Settings()).isEmpty)
+    }
+
+    func testDisablingStarsClearsUserListsAndReenablingBaselinesSilently() {
+        var state = RepositoryActivityState(accountID: account.id)
+        _ = state.alerts(for: snapshot(1), settings: Settings())
+        var settings = Settings()
+        settings.notifyStars = false
+        state.configure(settings)
+        XCTAssertNil(state.stargazers)
+        XCTAssertTrue(state.alerts(for: snapshot(3, after: 60), settings: settings).isEmpty)
+        XCTAssertNil(state.stargazers)
+        XCTAssertTrue(state.alerts(for: snapshot(2, after: 120), settings: Settings()).isEmpty)
+        XCTAssertEqual(state.stargazers?["10"]?.count, 2)
     }
 
     func testNewRepositoriesBaselineSilentlyAndRenamesKeepStarHistory() {
@@ -72,11 +135,15 @@ final class RepositoryActivityTests: XCTestCase {
         let next = RepositoryActivitySnapshot(
             account: account,
             repositories: [repository(11, name: "owner/renamed"), repository(500, id: 20, name: "owner/new")],
-            issues: [], checkedAt: start.addingTimeInterval(60), pollInterval: 60
+            issues: [], stargazers: ["10": snapshot(11).stargazers["10"]!, "20": [GitHubAccount(id: 2, login: "alice")]],
+            checkedAt: start.addingTimeInterval(60), pollInterval: 60
         )
         let alerts = state.alerts(for: next, settings: Settings())
         XCTAssertEqual(alerts.count, 1)
         XCTAssertEqual(alerts.first?.repository, "owner/renamed")
+        XCTAssertEqual(state.stargazers?["20"]?.map(\.login), ["alice"])
+        _ = state.alerts(for: snapshot(11, after: 120), settings: Settings())
+        XCTAssertNil(state.stargazers?["20"])
     }
 
     func testNewIssuesExcludePullRequestsOtherOwnersAndOldUpdates() throws {
@@ -157,7 +224,8 @@ final class RepositoryActivityTests: XCTestCase {
         for name in ["../repo", "owner/repo?redirect=evil", "owner/repo/extra", "owner/%2e%2e"] {
             let next = RepositoryActivitySnapshot(
                 account: account, repositories: [repository(11, name: name)],
-                issues: [try issue(repository: name)], checkedAt: start.addingTimeInterval(60), pollInterval: 60
+                issues: [try issue(repository: name)], stargazers: snapshot(11).stargazers,
+                checkedAt: start.addingTimeInterval(60), pollInterval: 60
             )
             XCTAssertTrue(state.alerts(for: next, settings: Settings()).isEmpty, name)
         }
