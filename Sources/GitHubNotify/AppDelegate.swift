@@ -8,7 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let tokenStore = TokenStore()
     private let client: GitHubClient
     private let openURL: @MainActor (URL) -> Void
-    private let activityMonitor = RepositoryActivityMonitor()
+    private let activityMonitor: RepositoryActivityMonitor
     private var settings = Settings()
     private var token = ""
     private var account: GitHubAccount?
@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var ownedItem: NSMenuItem!
     private var settingsWindow: SettingsWindowController?
     private var pollingTask: Task<Void, Never>?
-    private var markingTask: Task<Void, Never>?
+    private(set) var markingTask: Task<Void, Never>?
     private(set) var notificationReadTasks: [String: Task<Void, Never>] = [:]
     // Keep opened threads hidden until a poll started after their write completed.
     private var openedNotifications: [String: Date] = [:]
@@ -40,11 +40,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     init(
         client: GitHubClient = GitHubClient(),
+        activityMonitor: RepositoryActivityMonitor = RepositoryActivityMonitor(),
+        settings: Settings = Settings(),
         openURL: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) }
     ) {
         self.client = client
+        self.activityMonitor = activityMonitor
+        self.settings = settings
         self.openURL = openURL
         super.init()
+        activityMonitor.onChange = { [weak self] _ in
+            guard let self, self.statusItem != nil else { return }
+            self.render()
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -158,17 +166,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         else if snapshot == nil { emptyMessage = "No notifications loaded" }
         else { emptyMessage = "No unread notifications" }
         return NotificationDropdown.make(
-            notifications: notifications, emptyMessage: emptyMessage,
+            notifications: notifications, activity: summary?.visibleActivity ?? [], emptyMessage: emptyMessage,
             target: self, action: #selector(openNotification(_:))
         )
     }
 
     @objc private func openNotification(_ sender: NSMenuItem) {
+        if let event = sender.representedObject as? RepositoryToast {
+            do { try activityMonitor.dismiss([event.id]) }
+            catch { statusItem.button?.toolTip = "Could not dismiss activity: \(error.localizedDescription)" }
+            if event.url.scheme == "https", event.url.host == "github.com",
+               event.url.user == nil, event.url.password == nil, event.url.port == nil {
+                openURL(event.url)
+            }
+            return
+        }
         guard let notification = sender.representedObject as? GitHubNotification,
               let url = notification.browserURL else { return }
-        if openedNotifications[notification.id] == nil, let snapshot {
+        if openedNotifications[notification.id] == nil, snapshot != nil {
             openedNotifications[notification.id] = .distantFuture
-            render(snapshot)
+            render()
             let token = token
             notificationReadTasks[notification.id] = Task { [weak self] in
                 guard let self else { return }
@@ -181,7 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     guard !Task.isCancelled else { return }
                     self.openedNotifications[notification.id] = nil
                     self.notificationReadTasks[notification.id] = nil
-                    if let snapshot = self.snapshot { self.render(snapshot) }
+                    self.render()
                     self.statusItem.button?.toolTip = "Could not mark notification as read: \(error.localizedDescription)"
                 }
             }
@@ -227,15 +244,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard !marking else { return }
         guard !token.isEmpty else {
             snapshot = nil
-            summary = nil
-            markItem.isEnabled = false
+            render()
             refreshItem.isEnabled = false
             tokenItem.isHidden = false
-            setStatus(title: "No token", tooltip: "Enter a GitHub token in Settings.", symbol: "bell.slash")
+            if summary?.count == 0 {
+                setStatus(title: "No token", tooltip: "Enter a GitHub token in Settings.", symbol: "bell.slash")
+            }
             return
         }
         refreshItem.isEnabled = true
-        tokenItem.isHidden = true
+        tokenItem.isHidden = !token.isEmpty
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -274,24 +292,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func receive(_ snapshot: NotificationSnapshot) {
         openedNotifications = openedNotifications.filter { snapshot.checkedAt < $0.value }
         self.snapshot = snapshot
-        render(snapshot)
+        render()
     }
 
-    private func render(_ snapshot: NotificationSnapshot) {
-        let notifications = snapshot.notifications.filter { openedNotifications[$0.id] == nil }
-        let summary = NotificationSummary(notifications: notifications, settings: settings, accountLogin: account?.login)
+    private func render() {
+        let notifications = (snapshot?.notifications ?? []).filter { openedNotifications[$0.id] == nil }
+        let summary = NotificationSummary(
+            notifications: notifications, activity: activityMonitor.state?.unreadEvents ?? [],
+            settings: settings, accountLogin: account?.login ?? activityMonitor.state?.accountLogin
+        )
         self.summary = summary
         markItem.isEnabled = summary.count > 0 && !marking
-        tokenItem.isHidden = true
+        tokenItem.isHidden = !token.isEmpty
         let symbol = summary.count == 0 ? "bell" : summary.favoriteCount > 0 ? "bell.badge.fill" : "bell.fill"
         setStatus(title: summary.count == 0 ? "" : summary.title, tooltip: summary.tooltip, symbol: symbol)
     }
 
     private func showError(_ error: any Error) {
         snapshot = nil
-        summary = nil
-        markItem.isEnabled = false
+        render()
         if let error = error as? GitHubError, error.isUnauthorized { tokenItem.isHidden = false }
+        if let summary, summary.count > 0 {
+            statusItem.button?.toolTip = "\(summary.tooltip)\nCould not load GitHub notifications: \(error.localizedDescription)"
+            return
+        }
         setStatus(title: "Error", tooltip: error.localizedDescription, symbol: "exclamationmark.triangle")
     }
 
@@ -308,9 +332,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             try store.save(updated)
             settings = updated
             updateFilterChecks()
-            if let snapshot { render(snapshot) }
+            render()
             if mode == .owned, account == nil {
-                setStatus(title: "", tooltip: "Loading your repositories…", symbol: "bell")
+                if activityMonitor.state?.accountLogin == nil {
+                    setStatus(title: "", tooltip: "Loading your repositories…", symbol: "bell")
+                }
                 restartPolling()
             }
         } catch { showError(error) }
@@ -333,13 +359,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func getToken() { NSWorkspace.shared.open(Self.tokenURL) }
     @objc private func quit() { NSApp.terminate(nil) }
 
-    @objc private func markRead() {
-        guard !marking, let snapshot, let summary, summary.count > 0 else { return }
+    @objc func markRead() {
+        guard !marking, let summary, summary.count > 0 else { return }
+        // Capture only displayed local IDs. Events arriving during the remote write stay unread.
+        do { try activityMonitor.dismiss(Set(summary.visibleActivity.map(\.id))) }
+        catch {
+            statusItem.button?.toolTip = "Could not dismiss activity: \(error.localizedDescription)"
+            return
+        }
+        render()
+        let repositories = Set(summary.visibleNotifications.map { $0.repository.fullName }).sorted()
+        guard !repositories.isEmpty, let snapshot else { return }
         pollingTask?.cancel()
         marking = true
         markItem.isEnabled = false
         refreshItem.isEnabled = false
-        let repositories = summary.visibleRepositories.keys.sorted()
         let token = token
         markingTask = Task { [weak self] in
             guard let self else { return }

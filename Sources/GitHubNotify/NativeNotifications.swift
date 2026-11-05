@@ -5,6 +5,7 @@ import UserNotifications
 @MainActor
 final class NativeNotifications: NSObject, UNUserNotificationCenterDelegate {
     private let center: UNUserNotificationCenter?
+    var onOpen: ((String) -> Void)?
 
     override init() {
         // UserNotifications requires an app bundle, not a bare `swift run` executable.
@@ -94,7 +95,11 @@ final class NativeNotifications: NSObject, UNUserNotificationCenterDelegate {
               let value = response.notification.request.content.userInfo["url"] as? String,
               let url = URL(string: value), url.scheme == "https", url.host == "github.com",
               url.user == nil, url.password == nil, url.port == nil else { return }
-        await MainActor.run { _ = NSWorkspace.shared.open(url) }
+        let id = response.notification.request.identifier
+        await MainActor.run {
+            onOpen?(id)
+            _ = NSWorkspace.shared.open(url)
+        }
     }
 
     private func failure(_ message: String) -> NSError {

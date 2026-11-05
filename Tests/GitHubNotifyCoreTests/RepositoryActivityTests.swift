@@ -51,8 +51,57 @@ final class RepositoryActivityTests: XCTestCase {
     func testFirstCheckIsSilent() throws {
         var state = RepositoryActivityState(accountID: account.id)
         XCTAssertTrue(state.alerts(for: snapshot(500, issues: [try issue(after: -10)]), settings: Settings()).isEmpty)
+        XCTAssertTrue(state.unreadEvents.isEmpty)
         XCTAssertEqual(state.issuesCheckedAt, start)
         XCTAssertTrue(state.alerts(for: snapshot(500, after: 60), settings: Settings()).isEmpty)
+    }
+
+    func testUnreadActivityPersistsAndDismissalDoesNotReplayOrResetCheckpoints() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = RepositoryActivityStore(url: directory.appendingPathComponent("activity.json"))
+        var state = RepositoryActivityState(accountID: account.id)
+        _ = state.alerts(for: snapshot(), settings: Settings())
+        let next = try snapshot(11, issues: [issue()], workflowRuns: [workflowRun()], after: 60)
+        let alerts = state.alerts(for: next, settings: Settings())
+        XCTAssertEqual(alerts.count, 3)
+        XCTAssertEqual(state.unreadEvents, alerts)
+        try store.save(state)
+
+        var restored = try XCTUnwrap(store.load())
+        XCTAssertEqual(restored.accountLogin, "owner")
+        XCTAssertEqual(restored.unreadEvents, alerts)
+        XCTAssertTrue(restored.alerts(for: next, settings: Settings()).isEmpty)
+        XCTAssertEqual(restored.unreadEvents, alerts)
+        let checkpoint = restored.workflowFailuresCheckedAt
+        restored.dismiss(["workflow-failure-300-1"])
+        try store.save(restored)
+        restored = try XCTUnwrap(store.load())
+        XCTAssertEqual(restored.unreadEvents.map(\.id), alerts.filter { $0.id != "workflow-failure-300-1" }.map(\.id))
+        XCTAssertEqual(restored.workflowFailuresCheckedAt, checkpoint)
+        XCTAssertTrue(restored.alerts(for: next, settings: Settings()).isEmpty)
+        XCTAssertFalse(restored.unreadEvents.contains { $0.id == "workflow-failure-300-1" })
+
+        let later = try snapshot(11, issues: [issue()], workflowRuns: [workflowRun(attempt: 2, after: 61)], after: 120)
+        XCTAssertEqual(restored.alerts(for: later, settings: Settings()).map(\.id), ["workflow-failure-300-2"])
+        XCTAssertEqual(restored.unreadEvents.count, 3)
+    }
+
+    func testLegacyActivityStartsWithEmptyUnreadListAndDisablingAlertsKeepsUnreadEvents() throws {
+        var state = try JSONDecoder().decode(
+            RepositoryActivityState.self, from: Data(#"{"accountID":1,"seenIssues":{}}"#.utf8)
+        )
+        XCTAssertTrue(state.unreadEvents.isEmpty)
+        XCTAssertNil(state.accountLogin)
+        _ = state.alerts(for: snapshot(), settings: Settings())
+        let alerts = state.alerts(for: snapshot(11, after: 60), settings: Settings())
+        var settings = Settings()
+        settings.notifyStars = false
+        state.configure(settings)
+        XCTAssertEqual(state.unreadEvents, alerts)
+        state.dismiss(Set(alerts.map(\.id)))
+        XCTAssertTrue(state.unreadEvents.isEmpty)
+        XCTAssertTrue(state.alerts(for: snapshot(12, after: 120), settings: Settings()).isEmpty)
     }
 
     func testStarsNameAddedAndRemovedUsersAndLinkToStargazers() throws {

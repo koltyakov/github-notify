@@ -65,15 +65,22 @@ public struct NotificationSummary: Sendable {
     public let repositories: [String: Int]
     public let visibleRepositories: [String: Int]
     public let visibleNotifications: [GitHubNotification]
+    public let visibleActivity: [RepositoryToast]
     public let favoriteCount: Int
     public var count: Int { visibleRepositories.values.reduce(0, +) }
 
-    public init(notifications: [GitHubNotification], settings: Settings, accountLogin: String? = nil) {
+    public init(
+        notifications: [GitHubNotification], activity: [RepositoryToast] = [],
+        settings: Settings, accountLogin: String? = nil
+    ) {
         let patterns = settings.favoriteRepos.filter { !$0.isEmpty }
             .compactMap { try? Settings.favoriteExpression(for: $0) }
         var repositories: [String: Int] = [:]
         for notification in notifications {
             repositories[notification.repository.fullName, default: 0] += 1
+        }
+        for event in activity {
+            repositories[event.repository, default: 0] += 1
         }
         let favorites = repositories.filter { name, _ in
             let range = NSRange(name.startIndex..., in: name)
@@ -93,6 +100,7 @@ public struct NotificationSummary: Sendable {
         }
         self.visibleRepositories = visibleRepositories
         visibleNotifications = notifications.filter { visibleRepositories[$0.repository.fullName] != nil }
+        visibleActivity = activity.filter { visibleRepositories[$0.repository] != nil }
         favoriteCount = favorites.filter { visibleRepositories[$0.key] != nil }.values.reduce(0, +)
         self.settings = settings
     }

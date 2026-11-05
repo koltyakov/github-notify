@@ -125,4 +125,37 @@ final class NotificationSummaryTests: XCTestCase {
         XCTAssertTrue(summary.visibleRepositories.isEmpty)
         XCTAssertTrue(summary.visibleNotifications.isEmpty)
     }
+
+    func testActivityAndGitHubThreadsShareCountsAndFiltersButRemainSeparateSources() throws {
+        let events = ["owner/one", "owner/local", "other/three"].map { repository in
+            RepositoryToast(
+                id: repository, repository: repository, title: "CI pipeline failed", body: "Build on main",
+                url: URL(string: "https://github.com/\(repository)/actions")!
+            )
+        }
+        let threads = try notifications(["owner/one", "other/two"])
+        var settings = Settings()
+        settings.favoriteRepos = ["owner/*"]
+        let all = NotificationSummary(notifications: threads, activity: events, settings: settings)
+        XCTAssertEqual(all.count, 5)
+        XCTAssertEqual(all.favoriteCount, 3)
+        XCTAssertEqual(all.title, "[3]/5/4")
+        XCTAssertEqual(all.visibleActivity, events)
+        XCTAssertEqual(all.visibleNotifications, threads)
+        XCTAssertEqual(all.tooltip, "other/three (1)\nother/two (1)\nowner/local (1)\nowner/one (2)")
+
+        for mode in [FilterMode.favorite, .owned] {
+            settings.filtersMode = mode
+            let summary = NotificationSummary(
+                notifications: threads, activity: events, settings: settings, accountLogin: "owner"
+            )
+            XCTAssertEqual(summary.count, 3)
+            XCTAssertEqual(summary.visibleRepositories, ["owner/one": 2, "owner/local": 1])
+            XCTAssertEqual(summary.visibleNotifications.map(\.repository.fullName), ["owner/one"])
+            XCTAssertEqual(summary.visibleActivity.map(\.repository), ["owner/one", "owner/local"])
+        }
+        let unknownAccount = NotificationSummary(notifications: [], activity: events, settings: settings)
+        XCTAssertEqual(unknownAccount.count, 0)
+        XCTAssertTrue(unknownAccount.visibleActivity.isEmpty)
+    }
 }

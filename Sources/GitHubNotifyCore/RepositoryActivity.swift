@@ -144,7 +144,7 @@ public struct RepositoryActivitySnapshot: Sendable {
     }
 }
 
-public struct RepositoryToast: Equatable, Sendable {
+public struct RepositoryToast: Codable, Equatable, Sendable {
     public let id: String
     public let repository: String
     public let title: String
@@ -152,10 +152,13 @@ public struct RepositoryToast: Equatable, Sendable {
     public let url: URL
 }
 
-// Keep baselines separate from unread notifications. Marking notifications as read,
-// changing the menu filter, and restarting the app must not replay activity.
+// Dismissing unread events never changes detection baselines, so reading an event
+// or restarting the app cannot replay activity.
 public struct RepositoryActivityState: Codable, Sendable {
     public let accountID: Int
+    public private(set) var accountLogin: String?
+    private var unreadActivity: [RepositoryToast]?
+    public var unreadEvents: [RepositoryToast] { unreadActivity ?? [] }
     public private(set) var stargazers: [String: [GitHubAccount]]?
     private var forkCounts: [String: Int]?
     public private(set) var issuesCheckedAt: Date?
@@ -188,6 +191,10 @@ public struct RepositoryActivityState: Codable, Sendable {
 
     public init(accountID: Int) { self.accountID = accountID }
 
+    public mutating func dismiss(_ ids: Set<String>) {
+        unreadActivity = unreadEvents.filter { !ids.contains($0.id) }
+    }
+
     public mutating func configure(_ settings: Settings) {
         if !settings.notifyStars { stargazers = nil }
         if !settings.notifyForks { forkCounts = nil }
@@ -204,6 +211,7 @@ public struct RepositoryActivityState: Codable, Sendable {
 
     public mutating func alerts(for snapshot: RepositoryActivitySnapshot, settings: Settings) -> [RepositoryToast] {
         guard accountID == snapshot.account.id else { return [] }
+        accountLogin = snapshot.account.login
         var alerts: [RepositoryToast] = []
         if settings.notifyStars {
             var updated: [String: [GitHubAccount]] = [:]
@@ -327,6 +335,8 @@ public struct RepositoryActivityState: Codable, Sendable {
                 workflowFailureState = state
             } else { workflowFailureState = ActivityState(startedAt: snapshot.checkedAt, checkedAt: snapshot.checkedAt) }
         } else { workflowFailureState = nil }
+        var seen = Set(unreadEvents.map(\.id))
+        unreadActivity = unreadEvents + alerts.filter { seen.insert($0.id).inserted }
         return alerts
     }
 
