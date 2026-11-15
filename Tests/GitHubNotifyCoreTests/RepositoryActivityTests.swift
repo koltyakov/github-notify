@@ -470,9 +470,47 @@ final class RepositoryActivityTests: XCTestCase {
         var restored = try JSONDecoder().decode(RepositoryActivityState.self, from: JSONEncoder().encode(state))
         XCTAssertTrue(restored.alerts(for: next, settings: Settings()).isEmpty)
         let rerun = try workflowRun(attempt: 2, after: 61)
-        XCTAssertEqual(restored.alerts(for: snapshot(workflowRuns: [rerun], after: 120), settings: Settings()).first?.id,
-                       "workflow-failure-300-2")
+        let retryAlerts = restored.alerts(for: snapshot(workflowRuns: [rerun], after: 120), settings: Settings())
+        XCTAssertEqual(retryAlerts.first?.id, "workflow-failure-300-2")
+        XCTAssertEqual(restored.unreadEvents, retryAlerts)
+        restored = try JSONDecoder().decode(RepositoryActivityState.self, from: JSONEncoder().encode(restored))
+        XCTAssertEqual(restored.unreadEvents, retryAlerts)
         XCTAssertTrue(restored.alerts(for: snapshot(workflowRuns: [run, rerun], after: 600), settings: Settings()).isEmpty)
+        restored.dismiss(Set(retryAlerts.map(\.id)))
+        XCTAssertTrue(restored.unreadEvents.isEmpty)
+        XCTAssertTrue(restored.alerts(for: snapshot(workflowRuns: [rerun], after: 660), settings: Settings()).isEmpty)
+    }
+
+    func testUnreadWorkflowFailuresKeepHighestAttemptWithoutMergingDifferentRuns() throws {
+        var state = RepositoryActivityState(accountID: account.id)
+        _ = state.alerts(for: snapshot(), settings: Settings())
+        let runs = try [workflowRun(attempt: 2), workflowRun(), workflowRun(301)]
+        let alerts = state.alerts(for: snapshot(workflowRuns: runs, after: 60), settings: Settings())
+        XCTAssertEqual(alerts.count, 3)
+        XCTAssertEqual(state.unreadEvents.map(\.id), ["workflow-failure-300-2", "workflow-failure-301-1"])
+        XCTAssertEqual(state.unreadEvents.first?.url.absoluteString,
+                       "https://github.com/owner/repo/actions/runs/300/attempts/2")
+    }
+
+    func testRestoringLegacyUnreadWorkflowAttemptsKeepsOnlyLatestAndDismissesAllAttempts() throws {
+        struct SavedActivity: Encodable {
+            let accountID = 1
+            let seenIssues: [String: Date] = [:]
+            let unreadActivity: [RepositoryToast]
+        }
+        var original = RepositoryActivityState(accountID: account.id)
+        _ = original.alerts(for: snapshot(), settings: Settings())
+        let alerts = original.alerts(
+            for: try snapshot(issues: [issue()], workflowRuns: [workflowRun(attempt: 2), workflowRun()], after: 60),
+            settings: Settings()
+        )
+        var restored = try JSONDecoder().decode(
+            RepositoryActivityState.self, from: JSONEncoder().encode(SavedActivity(unreadActivity: alerts))
+        )
+        XCTAssertEqual(restored.unreadEvents.map(\.id), ["issue-100", "workflow-failure-300-2"])
+        restored.dismiss(["workflow-failure-300-2"])
+        restored = try JSONDecoder().decode(RepositoryActivityState.self, from: JSONEncoder().encode(restored))
+        XCTAssertEqual(restored.unreadEvents.map(\.id), ["issue-100"])
     }
 
     func testWorkflowFailuresIgnoreOtherConclusionsOwnersAndInvalidURLs() throws {

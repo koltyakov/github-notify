@@ -158,7 +158,7 @@ public struct RepositoryActivityState: Codable, Sendable {
     public let accountID: Int
     public private(set) var accountLogin: String?
     private var unreadActivity: [RepositoryToast]?
-    public var unreadEvents: [RepositoryToast] { unreadActivity ?? [] }
+    public var unreadEvents: [RepositoryToast] { Self.coalescedUnreadEvents(unreadActivity ?? []) }
     public private(set) var stargazers: [String: [GitHubAccount]]?
     private var forkCounts: [String: Int]?
     public private(set) var issuesCheckedAt: Date?
@@ -190,6 +190,32 @@ public struct RepositoryActivityState: Codable, Sendable {
     }
 
     public init(accountID: Int) { self.accountID = accountID }
+
+    // Retry failures still trigger banners, but unread activity has one row per run.
+    // Apply this on read too so activity saved by older versions is coalesced.
+    private static func coalescedUnreadEvents(_ events: [RepositoryToast]) -> [RepositoryToast] {
+        var result: [RepositoryToast] = []
+        var runs: [Int: (index: Int, attempt: Int)] = [:]
+        for event in events {
+            let parts = event.id.split(separator: "-", omittingEmptySubsequences: false)
+            guard parts.count == 4, parts[0] == "workflow", parts[1] == "failure",
+                  let runID = Int(parts[2]), runID > 0,
+                  let attempt = Int(parts[3]), attempt > 0 else {
+                result.append(event)
+                continue
+            }
+            if let previous = runs[runID] {
+                if attempt > previous.attempt {
+                    result[previous.index] = event
+                    runs[runID] = (previous.index, attempt)
+                }
+            } else {
+                runs[runID] = (result.count, attempt)
+                result.append(event)
+            }
+        }
+        return result
+    }
 
     public mutating func dismiss(_ ids: Set<String>) {
         unreadActivity = unreadEvents.filter { !ids.contains($0.id) }
@@ -336,7 +362,7 @@ public struct RepositoryActivityState: Codable, Sendable {
             } else { workflowFailureState = ActivityState(startedAt: snapshot.checkedAt, checkedAt: snapshot.checkedAt) }
         } else { workflowFailureState = nil }
         var seen = Set(unreadEvents.map(\.id))
-        unreadActivity = unreadEvents + alerts.filter { seen.insert($0.id).inserted }
+        unreadActivity = Self.coalescedUnreadEvents(unreadEvents + alerts.filter { seen.insert($0.id).inserted })
         return alerts
     }
 

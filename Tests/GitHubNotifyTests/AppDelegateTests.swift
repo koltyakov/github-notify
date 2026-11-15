@@ -199,6 +199,35 @@ final class AppDelegateTests: XCTestCase {
     }
 
     @MainActor
+    func testRestoredWorkflowRetriesShowOneRowAndCounterAndOpenLatestAttempt() async throws {
+        _ = NSApplication.shared
+        let events = (1...2).map { attempt in
+            RepositoryToast(
+                id: "workflow-failure-42-\(attempt)", repository: "owner/repo",
+                title: "CI pipeline failed", body: "Build on main, run #1",
+                url: URL(string: "https://github.com/owner/repo/actions/runs/42/attempts/\(attempt)")!
+            )
+        }
+        let (monitor, store) = try activityMonitor(events)
+        var openedURLs: [URL] = []
+        let delegate = AppDelegate(activityMonitor: monitor, openURL: { openedURLs.append($0) })
+        delegate.buildMenu()
+        defer { NSStatusBar.system.removeStatusItem(delegate.statusItem) }
+        try monitor.restore()
+        XCTAssertEqual(delegate.statusItem.button?.title, " 1")
+        let menu = delegate.notificationsMenu()
+        XCTAssertEqual(menu.items.count, 2)
+        XCTAssertEqual(menu.items[0].title, "owner/repo (1)")
+        XCTAssertEqual((menu.items[1].representedObject as? RepositoryToast)?.id, events[1].id)
+        menu.performActionForItem(at: 1)
+        XCTAssertEqual(openedURLs, [events[1].url])
+        XCTAssertEqual(delegate.statusItem.button?.title, "")
+        XCTAssertTrue(try XCTUnwrap(store.load()).unreadEvents.isEmpty)
+        try monitor.restore()
+        XCTAssertFalse(delegate.notificationsMenu().items.contains { $0.representedObject is RepositoryToast })
+    }
+
+    @MainActor
     func testLocalClickDoesNotMarkGitHubThreadWithSameIDAsRead() async throws {
         _ = NSApplication.shared
         let transport = NotificationReadTransport()
